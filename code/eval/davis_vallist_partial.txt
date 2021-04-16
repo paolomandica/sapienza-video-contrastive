@@ -1,0 +1,1 @@
+/home/paolo/dev/data_science/th_proj/davis_val/JPEGImages/480p/bike-packing /home/paolo/dev/data_science/th_proj/davis_val/Annotations/480p/bike-packing

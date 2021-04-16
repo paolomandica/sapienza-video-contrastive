@@ -1,0 +1,18 @@
+name: videowalk
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8
+  - imageio
+  - torchvision=0.6.0
+  - pytorch=1.5
+  - matplotlib
+  - scikit-image
+  - scikit-learn
+  - pandas
+  - wandb
+  - visdom
+  - pip:
+    - opencv-python

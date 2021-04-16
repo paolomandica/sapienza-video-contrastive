@@ -1,0 +1,20 @@
+##################### Training
+
+python -W ignore train.py --data-path /path/to/kinetics/ \
+--frame-aug grid --dropout 0.1 --clip-len 4 --temp 0.05 \
+--model-type scratch --workers 16 --batch-size 20  \
+--cache-dataset --data-parallel --visualize --lr 0.0001
+
+##################### Evaluation: label propagation
+
+python test.py --filelist /home/paolo/dev/data_science/th_proj/videowalk/code/eval/davis_vallist.txt \
+--model-type scratch --resume ../pretrained.pth --save-path ../results/ \
+--topk 10 --videoLen 5 --radius 12  --temperature 0.05  --cropSize -1
+
+### Convert
+python eval/convert_davis.py --in_folder ../results/ --out_folder ../convert_results/ --dataset /home/paolo/dev/data_science/th_proj/davis_val/
+
+### Compute metrics
+python /home/paolo/dev/data_science/th_proj/davis2017-evaluation/evaluation_method.py \
+--task semi-supervised   --results_path ../convert_results/ --set val \
+--davis_path /home/paolo/dev/data_science/th_proj/davis_val/
