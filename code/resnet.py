@@ -7,6 +7,7 @@ except ImportError:
 
 import torchvision.models.resnet as torch_resnet
 from torchvision.models.resnet import BasicBlock, Bottleneck
+import torchvision.models.video.resnet as video_resnet
 
 model_urls = {'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
     'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
@@ -67,3 +68,6 @@ def resnet18(pretrained=False, progress=True, **kwargs):
 def resnet50(pretrained=False, progress=True, **kwargs) -> ResNet:
     return _resnet('resnet50', Bottleneck, [3, 4, 6, 3], pretrained, progress,
                    **kwargs)
+
+def resnet_3d_18(pretrained=False, progress=True, **kwargs):
+    return video_resnet.r3d_18(pretrained=pretrained, progress=progress, **kwargs)
