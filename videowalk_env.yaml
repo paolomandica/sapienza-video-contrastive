@@ -16,3 +16,4 @@ dependencies:
   - visdom
   - pip:
     - opencv-python
+    - av

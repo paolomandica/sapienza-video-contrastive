@@ -1,5 +1,5 @@
 ##################### Training
-path_to_kinetics=/home/paolo/dev/data_science/th_proj/data/Kinetic400
+path_to_kinetics=data/kinetics400
 
 python -W ignore train.py --data-path $path_to_kinetics \
 --frame-aug grid --dropout 0.1 --clip-len 4 --temp 0.05 \
