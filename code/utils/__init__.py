@@ -1,3 +1,7 @@
+import resnet
+from torchvision import transforms
+from torch.nn import functional as F
+from torch import nn
 from collections import defaultdict, deque
 import datetime
 import time
@@ -15,25 +19,29 @@ from . import augs
 # DEBUG
 #########################################################
 
+
 def info(type, value, tb):
     if hasattr(sys, 'ps1') or not sys.stderr.isatty():
-    # we are in interactive mode or we don't have a tty-like
-    # device, so we call the default hook
+        # we are in interactive mode or we don't have a tty-like
+        # device, so we call the default hook
         sys.__excepthook__(type, value, tb)
     else:
-        import traceback, pdb
+        import traceback
+        import pdb
         # we are NOT in interactive mode, print the exception...
         traceback.print_exception(type, value, tb)
         print
         # ...then start the debugger in post-mortem mode.
         # pdb.pm() # deprecated
-        pdb.post_mortem(tb) # more "modern"
+        pdb.post_mortem(tb)  # more "modern"
+
 
 sys.excepthook = info
 
 #########################################################
 # Meters
 #########################################################
+
 
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
@@ -60,7 +68,8 @@ class SmoothedValue(object):
         """
         if not is_dist_avail_and_initialized():
             return
-        t = torch.tensor([self.count, self.total], dtype=torch.float64, device='cuda')
+        t = torch.tensor([self.count, self.total],
+                         dtype=torch.float64, device='cuda')
         dist.barrier()
         dist.all_reduce(t)
         t = t.tolist()
@@ -203,6 +212,7 @@ def accuracy(output, target, topk=(1,)):
             res.append(correct_k * (100.0 / batch_size))
         return res
 
+
 def mkdir(path):
     try:
         os.makedirs(path)
@@ -212,21 +222,18 @@ def mkdir(path):
 
 
 #################################################################################
-### Network Utils
+# Network Utils
 #################################################################################
 
-from torch import nn
-from torch.nn import functional as F
-from torchvision import transforms
-import resnet
 
 def partial_load(pretrained_dict, model, skip_keys=[]):
     model_dict = model.state_dict()
 
     # 1. filter out unnecessary keys
-    filtered_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict and not any([sk in k for sk in skip_keys])}
+    filtered_dict = {k: v for k, v in pretrained_dict.items(
+    ) if k in model_dict and not any([sk in k for sk in skip_keys])}
     skipped_keys = [k for k in pretrained_dict if k not in filtered_dict]
-    
+
     # 2. overwrite entries in the existing state dict
     model_dict.update(filtered_dict)
 
@@ -236,15 +243,18 @@ def partial_load(pretrained_dict, model, skip_keys=[]):
     print('\nSkipped keys: ', skipped_keys)
     print('\nLoading keys: ', filtered_dict.keys())
 
+
 def load_vince_model(path):
     checkpoint = torch.load(path, map_location={'cuda:0': 'cpu'})
-    checkpoint = {k.replace('feature_extractor.module.model.', ''): checkpoint[k] for k in checkpoint if 'feature_extractor' in k}
+    checkpoint = {k.replace('feature_extractor.module.model.', '')
+                            : checkpoint[k] for k in checkpoint if 'feature_extractor' in k}
     return checkpoint
+
 
 def load_tc_model():
     path = 'tc_checkpoint.pth.tar'
     model_state = torch.load(path, map_location='cpu')['state_dict']
-    
+
     net = resnet.resnet50()
     net_state = net.state_dict()
 
@@ -254,17 +264,19 @@ def load_tc_model():
         if net_state[kk].shape != model_state[k].shape and net_state[kk].dim() == 4 and model_state[k].dim() == 5:
             tmp = model_state[k].squeeze(2)
         net_state[kk][:] = tmp[:]
-        
+
     net.load_state_dict(net_state)
 
     return net
+
 
 def load_uvc_model():
     net = resnet.resnet18()
     net.avgpool, net.fc = None, None
 
     ckpt = torch.load('uvc_checkpoint.pth.tar', map_location='cpu')
-    state_dict = {k.replace('module.gray_encoder.', ''):v for k,v in ckpt['state_dict'].items() if 'gray_encoder' in k}
+    state_dict = {k.replace('module.gray_encoder.', ''): v for k,
+                  v in ckpt['state_dict'].items() if 'gray_encoder' in k}
     net.load_state_dict(state_dict)
 
     return net
@@ -272,10 +284,11 @@ def load_uvc_model():
 
 class From3D(nn.Module):
     ''' Use a 2D convnet as a 3D convnet '''
+
     def __init__(self, resnet):
         super(From3D, self).__init__()
         self.model = resnet
-    
+
     def forward(self, x):
         N, C, T, h, w = x.shape
         xx = x.permute(0, 2, 1, 3, 4).contiguous().view(-1, C, h, w)
@@ -302,8 +315,8 @@ def make_encoder(args):
     elif model_type == 'moco50':
         net = resnet.resnet50(pretrained=False)
         net_ckpt = torch.load('moco_v2_800ep_pretrain.pth.tar')
-        net_state = {k.replace('module.encoder_q.', ''):v for k,v in net_ckpt['state_dict'].items() \
-                if 'module.encoder_q' in k}
+        net_state = {k.replace('module.encoder_q.', ''): v for k, v in net_ckpt['state_dict'].items()
+                     if 'module.encoder_q' in k}
         partial_load(net_state, net)
 
     elif model_type == 'timecycle':
@@ -312,7 +325,10 @@ def make_encoder(args):
     elif model_type == 'uvc':
         net = load_uvc_model()
 
-    else: 
+    elif model_type == 'r3d_18':
+        net = resnet.resnet_3d_18(pretrained=True)
+
+    else:
         assert False, 'invalid args.model_type'
 
     if hasattr(net, 'modify'):
@@ -329,6 +345,7 @@ class MaskedAttention(nn.Module):
     A module that implements masked attention based on spatial locality 
     TODO implement in a more efficient way (torch sparse or correlation filter)
     '''
+
     def __init__(self, radius, flat=True):
         super(MaskedAttention, self).__init__()
         self.radius = radius
@@ -337,27 +354,28 @@ class MaskedAttention(nn.Module):
         self.index = {}
 
     def mask(self, H, W):
-        if not ('%s-%s' %(H,W) in self.masks):
+        if not ('%s-%s' % (H, W) in self.masks):
             self.make(H, W)
-        return self.masks['%s-%s' %(H,W)]
+        return self.masks['%s-%s' % (H, W)]
 
     def index(self, H, W):
-        if not ('%s-%s' %(H,W) in self.index):
+        if not ('%s-%s' % (H, W) in self.index):
             self.make_index(H, W)
-        return self.index['%s-%s' %(H,W)]
+        return self.index['%s-%s' % (H, W)]
 
     def make(self, H, W):
         if self.flat:
             H = int(H**0.5)
             W = int(W**0.5)
-        
+
         gx, gy = torch.meshgrid(torch.arange(0, H), torch.arange(0, W))
-        D = ( (gx[None, None, :, :] - gx[:, :, None, None])**2 + (gy[None, None, :, :] - gy[:, :, None, None])**2 ).float() ** 0.5
+        D = ((gx[None, None, :, :] - gx[:, :, None, None])**2 +
+             (gy[None, None, :, :] - gy[:, :, None, None])**2).float() ** 0.5
         D = (D < self.radius)[None].float()
 
         if self.flat:
             D = self.flatten(D)
-        self.masks['%s-%s' %(H,W)] = D
+        self.masks['%s-%s' % (H, W)] = D
 
         return D
 
@@ -368,13 +386,13 @@ class MaskedAttention(nn.Module):
         mask = self.mask(H, W).view(1, -1).byte()
         idx = torch.arange(0, mask.numel())[mask[0]][None]
 
-        self.index['%s-%s' %(H,W)] = idx
+        self.index['%s-%s' % (H, W)] = idx
 
         return idx
-        
+
     def forward(self, x):
         H, W = x.shape[-2:]
-        sid = '%s-%s' % (H,W)
+        sid = '%s-%s' % (H, W)
         if sid not in self.masks:
             self.masks[sid] = self.make(H, W).to(x.device)
         mask = self.masks[sid]
@@ -382,18 +400,19 @@ class MaskedAttention(nn.Module):
         return x * mask[0]
 
 #################################################################################
-### Misc
+# Misc
 #################################################################################
+
 
 def sinkhorn_knopp(A, tol=0.01, max_iter=1000, verbose=False):
     _iter = 0
-    
+
     if A.ndim > 2:
         A = A / A.sum(-1).sum(-1)[:, None, None]
     else:
         A = A / A.sum(-1).sum(-1)[None, None]
 
-    A1 = A2 = A 
+    A1 = A2 = A
 
     while (A2.sum(-2).std() > tol and _iter < max_iter) or _iter == 0:
         A1 = F.normalize(A2, p=1, dim=-2)
@@ -402,12 +421,15 @@ def sinkhorn_knopp(A, tol=0.01, max_iter=1000, verbose=False):
         _iter += 1
         if verbose:
             print(A2.max(), A2.min())
-            print('row/col sums', A2.sum(-1).std().item(), A2.sum(-2).std().item())
+            print('row/col sums', A2.sum(-1).std().item(),
+                  A2.sum(-2).std().item())
 
     if verbose:
-        print('------------row/col sums aft', A2.sum(-1).std().item(), A2.sum(-2).std().item())
+        print('------------row/col sums aft',
+              A2.sum(-1).std().item(), A2.sum(-2).std().item())
 
-    return A2 
+    return A2
+
 
 def to_numpy(tensor):
     if torch.is_tensor(tensor):
@@ -417,6 +439,7 @@ def to_numpy(tensor):
                          .format(type(tensor)))
     return tensor
 
+
 def to_torch(ndarray):
     if type(ndarray).__module__ == 'numpy':
         return torch.from_numpy(ndarray)
@@ -425,12 +448,14 @@ def to_torch(ndarray):
                          .format(type(ndarray)))
     return ndarray
 
+
 def im_to_numpy(img):
     img = to_numpy(img)
-    img = np.transpose(img, (1, 2, 0)) # H*W*C
+    img = np.transpose(img, (1, 2, 0))  # H*W*C
     return img
 
+
 def im_to_torch(img):
-    img = np.transpose(img, (2, 0, 1)) # C*H*W
+    img = np.transpose(img, (2, 0, 1))  # C*H*W
     img = to_torch(img).float()
     return img

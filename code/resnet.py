@@ -6,13 +6,18 @@ except ImportError:
     from torch.utils.model_zoo import load_url as load_state_dict_from_url
 
 import torchvision.models.resnet as torch_resnet
-from torchvision.models.resnet import BasicBlock, Bottleneck
 import torchvision.models.video.resnet as video_resnet
 
+from torchvision.models.resnet import BasicBlock, Bottleneck
+from torchvision.models.video.resnet import BasicBlock as VideoBasicBlock
+from torchvision.models.video.resnet import Conv3DSimple, BasicStem
+
 model_urls = {'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
-    'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
-    'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
-}
+              'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
+              'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
+              'r3d_18': 'https://download.pytorch.org/models/r3d_18-b3b3357e.pth'
+              }
+
 
 class ResNet(torch_resnet.ResNet):
     def __init__(self, *args, **kwargs):
@@ -20,13 +25,14 @@ class ResNet(torch_resnet.ResNet):
 
     def modify(self, remove_layers=[], padding=''):
         # Set stride of layer3 and layer 4 to 1 (from 2)
-        filter_layers = lambda x: [l for l in x if getattr(self, l) is not None]
+        def filter_layers(x): return [
+            l for l in x if getattr(self, l) is not None]
         for layer in filter_layers(['layer3', 'layer4']):
             for m in getattr(self, layer).modules():
                 if isinstance(m, torch.nn.Conv2d):
                     m.stride = tuple(1 for _ in m.stride)
                     print('stride', m)
-        # Set padding (zeros or reflect, doesn't change much; 
+        # Set padding (zeros or reflect, doesn't change much;
         # zeros requires lower temperature)
         if padding != '':
             for m in self.modules():
@@ -43,14 +49,29 @@ class ResNet(torch_resnet.ResNet):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
-        x = x if self.maxpool is None else self.maxpool(x) 
+        x = x if self.maxpool is None else self.maxpool(x)
 
         x = self.layer1(x)
         x = self.layer2(x)
-        x = x if self.layer3 is None else self.layer3(x) 
-        x = x if self.layer4 is None else self.layer4(x) 
-    
-        return x        
+        x = x if self.layer3 is None else self.layer3(x)
+        x = x if self.layer4 is None else self.layer4(x)
+
+        return x
+
+
+class VideoResNet(video_resnet.VideoResNet):
+    def __init__(self, *args, **kwargs):
+        super(VideoResNet, self).__init__(*args, **kwargs)
+
+    def forward(self, x):
+        x = self.stem(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+
+        return x
 
 
 def _resnet(arch, block, layers, pretrained, progress, **kwargs):
@@ -61,13 +82,31 @@ def _resnet(arch, block, layers, pretrained, progress, **kwargs):
         model.load_state_dict(state_dict)
     return model
 
+
+def _video_resnet(arch, pretrained=False, progress=True, **kwargs):
+    model = VideoResNet(**kwargs)
+
+    if pretrained:
+        state_dict = load_state_dict_from_url(model_urls[arch],
+                                              progress=progress)
+        model.load_state_dict(state_dict)
+    return model
+
+
 def resnet18(pretrained=False, progress=True, **kwargs):
     return _resnet('resnet18', BasicBlock, [2, 2, 2, 2], pretrained, progress,
                    **kwargs)
+
 
 def resnet50(pretrained=False, progress=True, **kwargs) -> ResNet:
     return _resnet('resnet50', Bottleneck, [3, 4, 6, 3], pretrained, progress,
                    **kwargs)
 
+
 def resnet_3d_18(pretrained=False, progress=True, **kwargs):
-    return video_resnet.r3d_18(pretrained=pretrained, progress=progress, **kwargs)
+    return _video_resnet('r3d_18',
+                         pretrained, progress,
+                         block=VideoBasicBlock,
+                         conv_makers=[Conv3DSimple] * 4,
+                         layers=[2, 2, 2, 2],
+                         stem=BasicStem, **kwargs)
