@@ -206,8 +206,10 @@ def train_args():
 
 
 def get_args():
-    data_path = 'data/kinetics400'
-    model_type = 'r3d_18'        # scratch
+    # data_path = 'data/kinetics400'
+    data_path = "/content/drive/MyDrive/th_project/kinetics400_partial/"
+    # model_type = 'r3d_18'
+    model_type = 'scratch'
 
     args = Namespace(batch_size=20, cache_dataset=True,
                      clip_len=4, clips_per_video=5,

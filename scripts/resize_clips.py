@@ -7,9 +7,9 @@ from time import time
 from datetime import timedelta
 
 
-def resize_clip(input_path, output_path, height=256, logger="bar", threads=6):
+def resize_clip(input_path, output_path, size=256, logger="bar", threads=6):
     clip = mp.VideoFileClip(input_path, audio=False)
-    clip_resized = clip.resize(height=height)
+    clip_resized = clip.resize(newsize=(size, size))
     clip_resized.write_videofile(output_path, logger=logger, threads=threads)
 
 
@@ -20,7 +20,7 @@ def makedirs(dir1, dir2):
     return subdirs
 
 
-def resize_multiple_clips(input_dir, output_dir, height=256):
+def resize_multiple_clips(input_dir, output_dir, size=256):
     subdirs = makedirs(input_dir, output_dir)
 
     print("\n=========== Starting resizing ===========\n")
@@ -39,7 +39,7 @@ def resize_multiple_clips(input_dir, output_dir, height=256):
             output_path = os.path.join(output_dir, subdir, clip)
             if not os.path.exists(output_path):
                 try:
-                    resize_clip(input_path, output_path, height, None)
+                    resize_clip(input_path, output_path, size, None)
                 except:
                     print("\nFailed: %s" % (output_path))
                     with open(os.path.join(output_dir, "failed_clips.txt"), "a") as txt:
@@ -52,8 +52,8 @@ def resize_multiple_clips(input_dir, output_dir, height=256):
 
 
 if __name__ == "__main__":
-    input_path = "/home/paolo/dev/data_science/th_proj/videowalk/data/kinetics400/train_256/"
-    output_path = "/home/paolo/dev/data_science/th_proj/videowalk/data/kinetics400/train_256_down/"
+    input_path = "/home/paolo/dev/data_science/th_proj/videowalk/data/kinetics400/train_256_down/"
+    output_path = "/home/paolo/dev/data_science/th_proj/videowalk/data/kinetics400/train_256_real/"
 
     Path(output_path).mkdir(parents=True, exist_ok=True)
 
