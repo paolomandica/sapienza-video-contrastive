@@ -10,12 +10,13 @@ import torchvision.models.video.resnet as video_resnet
 
 from torchvision.models.resnet import BasicBlock, Bottleneck
 from torchvision.models.video.resnet import BasicBlock as VideoBasicBlock
-from torchvision.models.video.resnet import Conv3DSimple, BasicStem
+from torchvision.models.video.resnet import Conv3DSimple, BasicStem, Conv2Plus1D, R2Plus1dStem
 
 model_urls = {'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
               'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
               'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
-              'r3d_18': 'https://download.pytorch.org/models/r3d_18-b3b3357e.pth'
+              'r3d_18': 'https://download.pytorch.org/models/r3d_18-b3b3357e.pth',
+              'r2plus1d_18': 'https://download.pytorch.org/models/r2plus1d_18-91a641e6.pth'
               }
 
 
@@ -110,3 +111,12 @@ def resnet_3d_18(pretrained=False, progress=True, **kwargs):
                          conv_makers=[Conv3DSimple] * 4,
                          layers=[2, 2, 2, 2],
                          stem=BasicStem, **kwargs)
+
+
+def r2plus1d_18(pretrained=False, progress=True, **kwargs):
+    return _video_resnet('r2plus1d_18',
+                         pretrained, progress,
+                         block=VideoBasicBlock,
+                         conv_makers=[Conv2Plus1D] * 4,
+                         layers=[2, 2, 2, 2],
+                         stem=R2Plus1dStem, **kwargs)
