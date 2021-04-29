@@ -52,7 +52,7 @@ def resize_multiple_clips(input_dir, output_dir, size=256):
 
 
 if __name__ == "__main__":
-    input_path = "/home/paolo/dev/data_science/th_proj/videowalk/data/kinetics400/train_256_down/"
+    input_path = "/home/paolo/dev/data_science/th_proj/videowalk/data/kinetics400/train_256/"
     output_path = "/home/paolo/dev/data_science/th_proj/videowalk/data/kinetics400/train_256_real/"
 
     Path(output_path).mkdir(parents=True, exist_ok=True)

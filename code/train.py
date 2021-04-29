@@ -31,9 +31,10 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
 
     header = 'Epoch: [{}]'.format(epoch)
 
-    for step, (video, orig) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for step, batch in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         start_time = time.time()
 
+        video, orig = batch
         video = video.to(device)
         output, loss, diagnostics = model(video)
         loss = loss.mean()
