@@ -207,7 +207,7 @@ def train_args():
 
 def get_args():
     # data_path = 'data/kinetics400'
-    data_path = "/content/drive/MyDrive/th_project/kinetics400_partial/"
+    data_path = "/content/drive/MyDrive/th_project/videowalk/code/data/kinetics/"
 
     model_type = 'scratch'      # scratch - r3d_18
     batch_size = 10     # 20

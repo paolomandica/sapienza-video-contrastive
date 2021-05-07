@@ -52,8 +52,11 @@ def resize_multiple_clips(input_dir, output_dir, size=256):
 
 
 if __name__ == "__main__":
-    input_path = "/home/paolo/dev/data_science/th_proj/videowalk/data/kinetics400/train_256/"
-    output_path = "/home/paolo/dev/data_science/th_proj/videowalk/data/kinetics400/train_256_real/"
+    # input_path is the path to the folder containing the subfolders (applauding, jogging, ...) with the clips
+    input_path = "/home/paolo/dev/data_science/th_proj/videowalk/data/kinetics400/"
+    # the output_path is the path to the output folder where the new subfolders will be stored
+    # if the output folder doesn't exists it will be automatically created with all the parent folders
+    output_path = "/home/paolo/dev/data_science/th_proj/videowalk/data/kinetics400_resized/"
 
     Path(output_path).mkdir(parents=True, exist_ok=True)
 
