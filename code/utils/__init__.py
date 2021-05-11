@@ -328,6 +328,9 @@ def make_encoder(args):
     elif model_type == 'r3d_18':
         net = resnet.resnet_3d_18(pretrained=True)
 
+    elif model_type == 'r2plus1d_18':
+        net = resnet.r2plus1d_18(pretrained=True)
+
     else:
         assert False, 'invalid args.model_type'
 
@@ -335,7 +338,10 @@ def make_encoder(args):
         net.modify(remove_layers=args.remove_layers)
 
     if 'Conv2d' in str(net):
+        print("2D ResNet")
         net = From3D(net)
+    else:
+        print("3D ResNet")
 
     return net
 

@@ -92,7 +92,9 @@ class CRW(nn.Module):
                 -- 'maps'  (B x N x C x T x H x W), node feature maps
         '''
         B, N, C, T, h, w = x.shape
+        print("X.SHAPE = ", x.shape)
         maps = self.encoder(x.flatten(0, 1))
+        print("MAPS = ", maps.shape)
         H, W = maps.shape[-2:]
 
         if self.featdrop_rate > 0:

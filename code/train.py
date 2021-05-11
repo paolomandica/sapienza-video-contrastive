@@ -36,6 +36,7 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
 
         video, orig = batch
         video = video.to(device)
+        print("VIDEO (BATCH) SHAPE = ", video.shape)
         output, loss, diagnostics = model(video)
         loss = loss.mean()
 
