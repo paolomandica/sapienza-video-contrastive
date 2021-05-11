@@ -221,6 +221,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    # args = utils.arguments.train_args()
-    args = utils.arguments.get_args()
+    args = utils.arguments.train_args()
+    # args = utils.arguments.get_args()
     main(args)

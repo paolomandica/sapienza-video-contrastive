@@ -1,9 +1,11 @@
 ##################### Training
-path_to_kinetics=data/kinetics400
+path_to_kinetics="data/kinetics400"
+output_dir = "checkpoints/resnet_3d_18/"
+model_type = "r3d_18"
 
-python -W ignore train.py --data-path $path_to_kinetics \
+python -W ignore train.py --data-path $path_to_kinetics --output-dir \
 --frame-aug grid --dropout 0.1 --clip-len 4 --temp 0.05 \
---model-type scratch --workers 16 --batch-size 20  \
+--model-type $model_type --workers 16 --batch-size 20  \
 --cache-dataset --data-parallel --visualize --lr 0.0001
 
 ##################### Evaluation: label propagation
