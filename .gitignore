@@ -280,4 +280,4 @@ fabric.properties
 ### folders ###
 results/
 data/
-kinetics/*
+kinetics/train_256/*
