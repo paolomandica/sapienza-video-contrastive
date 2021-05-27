@@ -281,3 +281,4 @@ fabric.properties
 results/
 data/
 kinetics/train_256/*
+/davis_val
