@@ -14,6 +14,6 @@ RUN pip install -r ./sapienza-video-contrastive/requirements.txt
 RUN git clone https://github.com/davisvideochallenge/davis2017-evaluation.git
 RUN python ./davis2017-evaluation/setup.py install
 
-RUN dvc pull
+# RUN dvc pull
 
 # CMD ["python", "./sapienza-video-contrastive/code/train.py"]
