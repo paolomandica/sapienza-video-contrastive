@@ -14,6 +14,16 @@ RUN pip install --ignore-installed -r ./sapienza-video-contrastive/requirements.
 RUN git clone https://github.com/davisvideochallenge/davis2017-evaluation.git
 RUN python ./davis2017-evaluation/setup.py install
 
+
+ARG USER_ID
+ARG GROUP_ID
+ENV USERNAME=francolu
+
+RUN addgroup --gid $GROUP_ID $USERNAME
+RUN adduser --home /home/$USERNAME --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_I $USERNAME
+USER $USERNAME
+
+
 # RUN dvc pull
 
 # CMD ["python", "./sapienza-video-contrastive/code/train.py"]
