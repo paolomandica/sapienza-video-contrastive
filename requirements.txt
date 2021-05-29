@@ -7,4 +7,4 @@ wandb
 visdom
 opencv-python
 av
-dvc
+dvc[gdrive]
