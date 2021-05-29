@@ -64,6 +64,11 @@ class VideoResNet(video_resnet.VideoResNet):
     def __init__(self, *args, **kwargs):
         super(VideoResNet, self).__init__(*args, **kwargs)
 
+    def modify(self, stride=0):
+        for m in self.modules():
+            if isinstance(m, torch.nn.Conv3d):
+                m.stride = tuple(1 for _ in m.stride)
+
     def forward(self, x):
         x = self.stem(x)
 
