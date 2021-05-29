@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install git nano -y
 RUN git clone https://github.com/paolomandica/sapienza-video-contrastive.git
 
 # Install requirements
-RUN pip install -r ./sapienza-video-contrastive/requirements.txt
+RUN pip install --ignore-installed -r ./sapienza-video-contrastive/requirements.txt
 
 # Clone and install evaluation repo
 RUN git clone https://github.com/davisvideochallenge/davis2017-evaluation.git
