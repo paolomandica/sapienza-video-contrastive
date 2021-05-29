@@ -20,7 +20,7 @@ ARG GROUP_ID
 ENV USERNAME=francolu
 
 RUN addgroup --gid $GROUP_ID $USERNAME
-RUN adduser --home /home/$USERNAME --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_I $USERNAME
+RUN adduser --home /home/$USERNAME --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID $USERNAME
 USER $USERNAME
 
 
