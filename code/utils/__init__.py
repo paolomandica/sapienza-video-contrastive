@@ -327,6 +327,7 @@ def make_encoder(args):
 
     elif model_type == 'r3d_18':
         net = resnet.resnet_3d_18(pretrained=True)
+        net.modify(stride=0)
 
     elif model_type == 'r2plus1d_18':
         net = resnet.r2plus1d_18(pretrained=True)
@@ -334,7 +335,7 @@ def make_encoder(args):
     else:
         assert False, 'invalid args.model_type'
 
-    if hasattr(net, 'modify'):
+    if hasattr(net, 'modify') and model_type not in ['r3d_18', 'r2plus1d_18']:
         net.modify(remove_layers=args.remove_layers)
 
     if 'Conv2d' in str(net):
