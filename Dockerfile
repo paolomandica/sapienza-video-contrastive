@@ -15,8 +15,8 @@ RUN git clone https://github.com/davisvideochallenge/davis2017-evaluation.git
 RUN python ./davis2017-evaluation/setup.py install
 
 
-ARG USER_ID
-ARG GROUP_ID
+ARG USER_ID=1038
+ARG GROUP_ID=1040
 ENV USERNAME=francolu
 
 RUN addgroup --gid $GROUP_ID $USERNAME
