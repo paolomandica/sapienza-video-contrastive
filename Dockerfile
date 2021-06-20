@@ -23,6 +23,7 @@ RUN addgroup --gid $GROUP_ID $USERNAME
 RUN adduser --home /home/$USERNAME --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID $USERNAME
 USER $USERNAME
 
+RUN pip install accelerator -y
 
 # RUN dvc pull
 

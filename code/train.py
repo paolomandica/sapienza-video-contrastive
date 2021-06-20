@@ -9,6 +9,7 @@ import torch.utils.data
 from torch.utils.data.dataloader import default_collate
 from torch import nn
 import torchvision
+from accelerate import Accelerator
 
 import data
 from data.kinetics import Kinetics400
@@ -20,7 +21,7 @@ from model import CRW
 
 
 def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, print_freq,
-                    vis=None, checkpoint_fn=None):
+                    vis=None, checkpoint_fn=None, accelerator=None):
 
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -49,7 +50,11 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
             checkpoint_fn()
 
         optimizer.zero_grad()
-        loss.backward()
+
+        if accelerator:
+            accelerator.backward(loss)
+        else:
+            loss.backward()
         # print(torch.nn.utils.clip_grad_norm_(model.parameters(), 1), 'grad norm')
         optimizer.step()
 
@@ -181,9 +186,12 @@ def main(args):
         optimizer, milestones=lr_milestones, gamma=args.lr_gamma)
 
     model_without_ddp = model
+
     if args.data_parallel:
-        model = torch.nn.parallel.DataParallel(model)
-        model_without_ddp = model.module
+        # model = torch.nn.parallel.DataParallel(model)
+        accelerator = Accelerator()
+        model, optimizer, data_loader = accelerator.prepare(
+            model, optimizer, data_loader)
 
     if args.partial_reload:
         checkpoint = torch.load(args.partial_reload, map_location='cpu')
@@ -218,7 +226,8 @@ def main(args):
     for epoch in range(args.start_epoch, args.epochs):
         train_one_epoch(model, optimizer, lr_scheduler, data_loader,
                         device, epoch, args.print_freq,
-                        vis=vis, checkpoint_fn=save_model_checkpoint)
+                        vis=vis, checkpoint_fn=save_model_checkpoint,
+                        accelerator=accelerator)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
