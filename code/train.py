@@ -36,7 +36,7 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
 
         video, orig = batch
         video = video.to(device)
-        print("VIDEO (BATCH) SHAPE = ", video.shape)
+        # print("VIDEO (BATCH) SHAPE = ", video.shape)
         output, loss, diagnostics = model(video)
         loss = loss.mean()
 
@@ -81,6 +81,9 @@ def main(args):
     print(args)
     print("torch version: ", torch.__version__)
     print("torchvision version: ", torchvision.__version__)
+    gpus_count = torch.cuda.device_count()
+    print('Available CUDA devices: ', gpus_count)
+    print('Current CUDA device: ', torch.cuda.current_device())
 
     device = torch.device(args.device)
     torch.backends.cudnn.benchmark = True
@@ -91,7 +94,9 @@ def main(args):
     valdir = os.path.join(args.data_path, 'val_256')
 
     st = time.time()
-    cache_path = _get_cache_path(traindir)
+    # cache_path = _get_cache_path(traindir)
+    # fixed cache path for docker
+    cache_path = "./0c870b8733.pt"
 
     transform_train = utils.augs.get_train_transforms(args)
 
