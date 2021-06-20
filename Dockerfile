@@ -1,10 +1,21 @@
-FROM pytorch/pytorch:1.8.0-cuda11.1-cudnn8-devel
+FROM pytorch/pytorch:1.8.1-cuda11.1-cudnn8-devel
+
+# Set permission
+ARG USER_ID=1038
+ARG GROUP_ID=1040
+ENV USERNAME=francolu
+
+RUN addgroup --gid $GROUP_ID $USERNAME
+RUN adduser --home /home/$USERNAME --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID $USERNAME
+
 
 # Set the working directory
-WORKDIR /video-contrastive
+WORKDIR /home/$USERNAME
 
 # Clone the repo
 RUN apt-get update && apt-get install git nano -y
+RUN apt-get install ffmpeg libsm6 libxext6  -y
+
 RUN git clone https://github.com/paolomandica/sapienza-video-contrastive.git
 
 # Install requirements
@@ -15,12 +26,9 @@ RUN git clone https://github.com/davisvideochallenge/davis2017-evaluation.git
 RUN python ./davis2017-evaluation/setup.py install
 
 
-ARG USER_ID
-ARG GROUP_ID
-ENV USERNAME=francolu
+RUN chown $USERNAME -R ./sapienza-video-contrastive/
+RUN chmod u+rwx -R ./sapienza-video-contrastive/
 
-RUN addgroup --gid $GROUP_ID $USERNAME
-RUN adduser --home /home/$USERNAME --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID $USERNAME
 USER $USERNAME
 
 RUN pip install accelerator -y
