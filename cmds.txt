@@ -1,0 +1,31 @@
+##################### DOCKER
+docker run --user "$(id -u):$(id -g)" -it --gpus '"device=0,4"' \
+--name "francolu_contrastive" --shm-size 8G \
+-v /raid/data/francolu:/data_volume \
+paolomandica/sapienza-video-contrastive
+
+
+##################### TRAINING - from ./code
+path_to_kinetics="../kinetics"
+output_dir="../checkpoints/scratch/"
+model_type="scratch"
+
+python -W ignore train.py --data-path $path_to_kinetics --output-dir $output_dir \
+--frame-aug grid --dropout 0.1 --clip-len 4 --temp 0.05 --model-type $model_type \
+--workers 20 --batch-size 20 --cache-dataset --data-parallel --lr 0.0001 --epochs 10
+
+
+##################### EVALUATION - from ./code
+
+python test.py --filelist ./eval/davis_vallist.txt --model-type scratch \
+--resume ../checkpoints/model_9.pth --save-path ../results/scratch/ \
+--topk 10 --videoLen 5 --radius 12  --temperature 0.05  --cropSize -1
+
+### Convert
+python ./eval/convert_davis.py --in_folder ../results/scratch/ \
+--out_folder ../convert_results/scratch/ --dataset ../davis_val/
+
+### Compute metrics
+python /data_volume/davis2017-evaluation/evaluation_method.py \
+--task semi-supervised  --results_path ../convert_results/scratch/ \
+--set val --davis_path ../davis_val/
