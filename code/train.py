@@ -9,6 +9,7 @@ import torch.utils.data
 from torch.utils.data.dataloader import default_collate
 from torch import nn
 import torchvision
+from torch.utils.tensorboard import SummaryWriter
 from accelerate import Accelerator
 
 import data
@@ -21,7 +22,7 @@ from model import CRW
 
 
 def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, print_freq,
-                    vis=None, checkpoint_fn=None, accelerator=None):
+                    vis=None, checkpoint_fn=None, accelerator=None, tb_writer=None):
 
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -45,6 +46,8 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
             vis.wandb_init(model)
             vis.log(dict(loss=loss.mean().item()))
             vis.log({k: v.mean().item() for k, v in diagnostics.items()})
+
+        writer.add_scalar("Loss/train", loss, epoch)
 
         if checkpoint_fn is not None and np.random.random() < 0.005:
             checkpoint_fn()
@@ -174,6 +177,7 @@ def main(args):
         pin_memory=True, collate_fn=collate_fn)
 
     vis = utils.visualize.Visualize(args) if args.visualize else None
+    tb_writer = SummaryWriter(log_dir="./logs")
 
     print("Creating model")
     model = CRW(args, vis=vis).to(device)
@@ -227,7 +231,7 @@ def main(args):
         train_one_epoch(model, optimizer, lr_scheduler, data_loader,
                         device, epoch, args.print_freq,
                         vis=vis, checkpoint_fn=save_model_checkpoint,
-                        accelerator=accelerator)
+                        accelerator=accelerator, tb_writer=tb_writer)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
