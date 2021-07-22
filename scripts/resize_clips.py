@@ -19,11 +19,10 @@ def resize_clip_mpy(input_path, output_path, size=256, logger="bar", threads=6):
 
 def resize_clip(input_path, output_path, size=256, logger=None, threads=None):
     size = str(size)+':'+str(size)
-    print("SIZE = ", size)
     subprocess.call(
         ['ffmpeg', '-y', '-hwaccel', 'cuda',
          '-i', input_path, '-vf', 'scale='+size, '-an',
-         '-c:v', 'h264_nvenc', output_path])
+         '-c:v', 'libopenh264', output_path])
 
 
 def resize_dir(input_dir, output_dir, size, subdir):
@@ -90,4 +89,4 @@ if __name__ == "__main__":
 
     Path(output_path).mkdir(parents=True, exist_ok=True)
 
-    resize_multiple_clips(input_path, output_path, workers=6)
+    resize_multiple_clips(input_path, output_path, workers=1)

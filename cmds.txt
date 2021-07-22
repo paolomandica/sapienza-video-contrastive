@@ -1,4 +1,5 @@
 ##################### DOCKER
+
 docker run --user "$(id -u):$(id -g)" -it --gpus '"device=0,4"' \
 --name "francolu_contrastive" --shm-size 8G \
 -v /raid/data/francolu:/data_volume \
@@ -6,13 +7,16 @@ paolomandica/sapienza-video-contrastive
 
 
 ##################### TRAINING - from ./code
+
 path_to_kinetics="../kinetics"
 output_dir="../checkpoints/scratch/"
+logs_dir="../logs/"
 model_type="scratch"
 
 python -W ignore train.py --data-path $path_to_kinetics --output-dir $output_dir \
 --frame-aug grid --dropout 0.1 --clip-len 4 --temp 0.05 --model-type $model_type \
---workers 20 --batch-size 20 --cache-dataset --data-parallel --lr 0.0001 --epochs 10
+--workers 20 --batch-size 20 --cache-dataset --logs-dir  \
+--lr 0.0001 --epochs 10 --data-parallel
 
 
 ##################### EVALUATION - from ./code

@@ -3,13 +3,13 @@ import os
 import time
 import sys
 import numpy as np
+import json
 
 import torch
 import torch.utils.data
 from torch.utils.data.dataloader import default_collate
 from torch import nn
 import torchvision
-from torch.utils.tensorboard import SummaryWriter
 from accelerate import Accelerator
 
 import data
@@ -22,7 +22,7 @@ from model import CRW
 
 
 def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, print_freq,
-                    vis=None, checkpoint_fn=None, accelerator=None, tb_writer=None):
+                    vis=None, checkpoint_fn=None, accelerator=None, log_fn=None, logs_dict=None):
 
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -47,10 +47,12 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
             vis.log(dict(loss=loss.mean().item()))
             vis.log({k: v.mean().item() for k, v in diagnostics.items()})
 
-        writer.add_scalar("Loss/train", loss, epoch)
-
         if checkpoint_fn is not None and np.random.random() < 0.005:
             checkpoint_fn()
+
+        if logs_dict is not None:
+            logs_dict[epoch] = logs_dict.get(epoch, {})
+            logs_dict[epoch][step] = loss.mean().item()
 
         optimizer.zero_grad()
 
@@ -67,7 +69,10 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
             video.shape[0] / (time.time() - start_time))
         lr_scheduler.step()
 
-    checkpoint_fn()
+    if checkpoint_fn is not None:
+        checkpoint_fn()
+    if log_fn is not None:
+        log_fn(logs_dict)
 
 
 def _get_cache_path(filepath):
@@ -177,7 +182,6 @@ def main(args):
         pin_memory=True, collate_fn=collate_fn)
 
     vis = utils.visualize.Visualize(args) if args.visualize else None
-    tb_writer = SummaryWriter(log_dir="./logs")
 
     print("Creating model")
     model = CRW(args, vis=vis).to(device)
@@ -191,6 +195,7 @@ def main(args):
 
     model_without_ddp = model
 
+    accelerator = None
     if args.data_parallel:
         # model = torch.nn.parallel.DataParallel(model)
         accelerator = Accelerator()
@@ -225,13 +230,21 @@ def main(args):
                 checkpoint,
                 os.path.join(args.output_dir, 'checkpoint.pth'))
 
+    def save_training_logs(logs_dict):
+        if args.logs_dir:
+            with open(os.path.join(args.logs_dir, 'log.json'), 'w') as fp:
+                json.dump(logs_dict, fp, indent=4)
+
+    logs = dict()
+
     print("Start training")
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
         train_one_epoch(model, optimizer, lr_scheduler, data_loader,
                         device, epoch, args.print_freq,
                         vis=vis, checkpoint_fn=save_model_checkpoint,
-                        accelerator=accelerator, tb_writer=tb_writer)
+                        accelerator=accelerator, log_fn=save_training_logs,
+                        logs_dict=logs)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))

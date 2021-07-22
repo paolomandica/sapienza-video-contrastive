@@ -121,6 +121,8 @@ def train_args():
                         type=int, help='print frequency')
     parser.add_argument('--output-dir', default='auto',
                         help='path where to save')
+    parser.add_argument('--logs-dir', default='auto',
+                        help='path where to dump logs')
     parser.add_argument('--resume', default='', help='resume from checkpoint')
     parser.add_argument('--partial-reload', default='',
                         help='reload net from checkpoint, ignoring keys that are not in current model')
@@ -201,6 +203,7 @@ def train_args():
                                      str(dt.day), args.name, name)
 
     utils.mkdir(args.output_dir)
+    utils.mkdir(args.logs_dir)
 
     return args
 
@@ -217,8 +220,10 @@ def get_args():
     dropout = 0.1       # 0.1
     lr = 0.0001     # 0.0001
     workers = 16        # 16
-    output_dir = "checkpoints/resnet_3d_18/" # 'checkpoints/_drop0.1-len4-ftranscrop-fauggrid-optimadam-temp0.05-fdrop0.0-lr0.0001-mlp0/'
-    name = '4-19-_drop0.1-len4-ftranscrop-fauggrid-optimadam-temp0.05-fdrop0.0-lr0.0001-mlp0' # '4-19-_drop0.1-len4-ftranscrop-fauggrid-optimadam-temp0.05-fdrop0.0-lr0.0001-mlp0',
+    # 'checkpoints/_drop0.1-len4-ftranscrop-fauggrid-optimadam-temp0.05-fdrop0.0-lr0.0001-mlp0/'
+    output_dir = "checkpoints/resnet_3d_18/"
+    # '4-19-_drop0.1-len4-ftranscrop-fauggrid-optimadam-temp0.05-fdrop0.0-lr0.0001-mlp0',
+    name = '4-19-_drop0.1-len4-ftranscrop-fauggrid-optimadam-temp0.05-fdrop0.0-lr0.0001-mlp0'
 
     args = Namespace(batch_size=batch_size, cache_dataset=True,
                      clip_len=clip_len, clips_per_video=clips_per_video,

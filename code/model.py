@@ -120,8 +120,8 @@ class CRW(nn.Module):
         feats = feats.view(B, N, feats.shape[1], T).permute(0, 2, 3, 1)
         maps = maps.view(B, N, *maps.shape[1:])
 
-        print("FINAL FEATS", feats.shape)
-        print("FINAL MAPS", maps.shape)
+        # print("FINAL FEATS", feats.shape)
+        # print("FINAL MAPS", maps.shape)
         return feats, maps
 
     def forward(self, x, just_feats=False,):
