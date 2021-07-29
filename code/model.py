@@ -75,18 +75,28 @@ class CRW(nn.Module):
 
         return A.squeeze(1) if in_t_dim < 4 else A
 
-    def stoch_mat(self, A, zero_diagonal=False, do_dropout=True, do_sinkhorn=False):
-        ''' Affinity -> Stochastic Matrix '''
+    # def stoch_mat(self, A, zero_diagonal=False, do_dropout=True, do_sinkhorn=False):
+    #     ''' Affinity -> Stochastic Matrix '''
 
-        if zero_diagonal:
-            A = self.zeroout_diag(A)
+    #     if zero_diagonal:
+    #         A = self.zeroout_diag(A)
+
+    #     if do_dropout and self.edgedrop_rate > 0:
+    #         A[torch.rand_like(A) < self.edgedrop_rate] = -1e20
+
+    #     if do_sinkhorn:
+    #         return utils.sinkhorn_knopp((A/self.temperature).exp(),
+    #                                     tol=0.01, max_iter=100, verbose=False)
+
+    #     return F.softmax(A/self.temperature, dim=-1)
+
+    def stoch_mat(self, A, zero_diagonal=False, do_dropout=True, do_sinkhorn=False):
+        ''' Affinity -> Stochastic Matrix
+        
+        Paolo and Anil: Modified for use with single matrices '''
 
         if do_dropout and self.edgedrop_rate > 0:
             A[torch.rand_like(A) < self.edgedrop_rate] = -1e20
-
-        if do_sinkhorn:
-            return utils.sinkhorn_knopp((A/self.temperature).exp(),
-                                        tol=0.01, max_iter=100, verbose=False)
 
         return F.softmax(A/self.temperature, dim=-1)
 
@@ -163,7 +173,7 @@ class CRW(nn.Module):
                 # add to the list of SP features
                 feats = np.concatenate((feats, sp_feat), 0)
 
-            final_feats.append(feats)
+            final_feats.append(torch.from_numpy(feats))
 
         return final_feats, final_segment
 
@@ -178,12 +188,13 @@ class CRW(nn.Module):
         B, T, c, h, w = x.shape
         x = x.permute(0, 2, 1, 3, 4)
         maps = self.encoder(x)
-        print("MAPS.SHAPE = ", maps.shape)
+        # print("MAPS.SHAPE = ", maps.shape)
 
         # xx = x.contiguous().view(-1, c, h, w).type(torch.cuda.FloatTensor)
         # m = self.encoder(xx)
         # maps = m.view(B, T, *m.shape[-3:]).permute(0, 2, 1, 3, 4)
-        # MANCA LA NORMALIZZAZIONE L2
+        
+        # L2 Norm
 
         B, C, T, H, W = maps.shape
 
@@ -192,13 +203,13 @@ class CRW(nn.Module):
 
         for b in range(B):
             ff, seg = self.extract_sp_feat(x[b], maps[b])
-            ff_list.append(np.array(ff))
+            ff_list.append(ff)
             seg_list.append(seg)
 
         # ff_list = torch.as_tensor(ff_list)
         # seg_list = torch.as_tensor(seg_list)
 
-        return np.array(ff_list), seg_list
+        return ff_list, seg_list
 
     def forward(self, x, just_feats=False,):
         '''
@@ -237,28 +248,56 @@ class CRW(nn.Module):
 
         walks = dict()
 
-        # q = torch.from_numpy(q)
+        # print("type(q[0]) = ", type(q[0]))
+        # print("len(q[0]) = ", len(q[0]))
+        # print("q[0].dtype = ", q[0].dtype)
 
         As = []
-        for t in range(T-1):
-            op1 = q[:, t]
-            op2 = q[:, t+1].T
-            print("OP1.shape = ", op1.shape)
-            print("OP2.shape = ", op2.shape)
-            As.append(op1 @ op2)
+        for _q in q:
+            _As = []
+            for t in range(T-1):
+                op1 = _q[t]
+                op2 = _q[t+1].T
+                print("OP1.shape = ", op1.shape)
+                print("OP2.shape = ", op2.shape)
+                _As.append(op1 @ op2)
+            As.append(_As)
 
         # As = self.affinity(q[:, :, :-1], q[:, :, 1:])
 
-        print("As len = ", len(As))
-        print("As item len = ", len(As[0]))
-        exit()
+        A12s = []
+        for _As in As: # per batch
+            _A12s = [self.stoch_mat(_As[t], do_dropout=True) for t in range(T-1)]
+            A12s.append(_A12s)
 
-        A12s = [self.stoch_mat(As[:, i], do_dropout=True) for i in range(T-1)]
+        # A12s = [self.stoch_mat(As[:, i], do_dropout=True) for i in range(T-1)]
+
+        print("len(A12s) = ", len(A12s))
+        print("A12s[0][0] = ", A12s[0][0])
+
+        # # Palindromes
+        # if not self.sk_targets:
+        #     A21s = [self.stoch_mat(
+        #         As[:, i].transpose(-1, -2), do_dropout=True) for i in range(T-1)]
+        #     AAs = []
+        #     for i in list(range(1, len(A12s))):
+        #         g = A12s[:i+1] + A21s[:i+1][::-1]
+        #         aar = aal = g[0]
+        #         for _a in g[1:]:
+        #             aar, aal = aar @ _a, _a @ aal
+
+        #         AAs.append((f"l{i}", aal) if self.flip else (f"r{i}", aar))
+
+        #     for i, aa in AAs:
+        #         walks[f"cyc {i}"] = [aa, self.xent_targets(aa)]
 
         # Palindromes
         if not self.sk_targets:
-            A21s = [self.stoch_mat(
-                As[:, i].transpose(-1, -2), do_dropout=True) for i in range(T-1)]
+            A21s = []
+            for _As in As: # per batch
+                _A21s = [self.stoch_mat(_As[t].T, do_dropout=True) for t in range(T-1)]
+                A21s.append(_A21s)
+            
             AAs = []
             for i in list(range(1, len(A12s))):
                 g = A12s[:i+1] + A21s[:i+1][::-1]
