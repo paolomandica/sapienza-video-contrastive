@@ -10,6 +10,7 @@ import torch.utils.data
 from torch.utils.data.dataloader import default_collate
 from torch import nn
 import torchvision
+# from torch.utils.tensorboard import SummaryWriter
 from accelerate import Accelerator
 
 import data
@@ -38,9 +39,13 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
 
         video, orig = batch
         video = video.to(device)
-        # print("VIDEO (BATCH) SHAPE = ", video.shape)
+        print("VIDEO (BATCH) SHAPE = ", video.shape)
         output, loss, diagnostics = model(video)
-        loss = loss.mean()
+
+        # orig = orig.to(device)
+        # print("ORIG (BATCH) SHAPE = ", orig.shape)
+        # output, loss, diagnostics = model(orig)
+        # loss = loss.mean()
 
         if vis is not None and np.random.random() < 0.01:
             vis.wandb_init(model)
@@ -183,6 +188,9 @@ def main(args):
 
     vis = utils.visualize.Visualize(args) if args.visualize else None
 
+    # tensorboard logs writer
+    # writer = SummaryWriter(log_dir="./logs")
+
     print("Creating model")
     model = CRW(args, vis=vis).to(device)
     print(model)
@@ -233,7 +241,7 @@ def main(args):
     def save_training_logs(logs_dict):
         if args.logs_dir:
             with open(os.path.join(args.logs_dir, 'log.json'), 'w') as fp:
-                json.dump(logs_dict, fp, indent=4)
+                json.dump(logs_dict, fp)
 
     logs = dict()
 
@@ -253,5 +261,6 @@ def main(args):
 
 if __name__ == "__main__":
     args = utils.arguments.train_args()
+    args.logs_dir = "../../logs/"
     # args = utils.arguments.get_args()
     main(args)

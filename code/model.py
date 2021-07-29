@@ -1,9 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 import numpy as np
 import utils
+import skimage
+
+from skimage.segmentation import slic
+from skimage.util import img_as_float
 
 EPS = 1e-20
 
@@ -37,12 +40,12 @@ class CRW(nn.Module):
         dummy = torch.zeros(1, 3, 1, in_sz, in_sz).to(
             next(self.encoder.parameters()).device)
         dummy_out = self.encoder(dummy)
-        print("Dummy output ====>", dummy_out.shape)
+        # print("Dummy output ====>", dummy_out.shape)
         self.enc_hid_dim = dummy_out.shape[1]
         self.map_scale = in_sz // dummy_out.shape[-1]
         out = self.encoder(torch.zeros(1, 3, 1, 320, 320).to(
             next(self.encoder.parameters()).device))
-        print("OUT SHAPE:", out.shape)
+        # print("OUT SHAPE:", out.shape)
         # scale = out[1].shape[-2:]
 
     def make_head(self, depth=1):
@@ -124,6 +127,79 @@ class CRW(nn.Module):
         # print("FINAL MAPS", maps.shape)
         return feats, maps
 
+    def extract_sp_feat(self, full_img, full_img_feat):
+
+        c, T, h, w = full_img.shape
+        C, T, H, W = full_img_feat.shape
+
+        final_feats = []
+        final_segment = []
+
+        for t in range(T):
+
+            img = full_img[:, t, :, :]
+            img = img_as_float(img.cpu()).transpose(1, 2, 0)
+            segments_slic = slic(img, n_segments=50, compactness=30, sigma=0.5)
+            final_segment.append(segments_slic)
+
+            img_feat = full_img_feat[:, t, :, :].permute(1, 2, 0)
+
+            feats = np.empty((0, C))
+
+            for sp in np.unique(segments_slic):
+                # Select specific SP
+                single_sp = (segments_slic == sp) * 1
+                # consider portion of SP for receptive field of each ResNet feature
+                out = skimage.util.view_as_windows(
+                    single_sp, (int(h / H), int(w / W)), step=int(h / H))
+                # compute percentatge of intersection between SP and receptive field of the features
+                ww = np.sum(np.sum(out, axis=-1), axis=-1) / np.sum(single_sp)
+                # weight each features with relative intersection weight
+                weight_feat = np.repeat(np.expand_dims(
+                    ww, 2), C, 2) * img_feat.cpu().detach().numpy()
+                # extract a mean feature
+                sp_feat = np.mean(np.mean(weight_feat, axis=0),
+                                  axis=0).reshape(1, -1)
+                # add to the list of SP features
+                feats = np.concatenate((feats, sp_feat), 0)
+
+            final_feats.append(feats)
+
+        return final_feats, final_segment
+
+    def image_to_nodes(self, x):
+        ''' Inputs:
+                -- 'x' (B x C x T x h x w), batch of images
+            Outputs:
+                -- 'feats' (B x C x T x N), node embeddings
+                -- 'maps'  (B x C x T x H x W), node feature maps
+        '''
+
+        B, T, c, h, w = x.shape
+        x = x.permute(0, 2, 1, 3, 4)
+        maps = self.encoder(x)
+        print("MAPS.SHAPE = ", maps.shape)
+
+        # xx = x.contiguous().view(-1, c, h, w).type(torch.cuda.FloatTensor)
+        # m = self.encoder(xx)
+        # maps = m.view(B, T, *m.shape[-3:]).permute(0, 2, 1, 3, 4)
+        # MANCA LA NORMALIZZAZIONE L2
+
+        B, C, T, H, W = maps.shape
+
+        ff_list = []
+        seg_list = []
+
+        for b in range(B):
+            ff, seg = self.extract_sp_feat(x[b], maps[b])
+            ff_list.append(np.array(ff))
+            seg_list.append(seg)
+
+        # ff_list = torch.as_tensor(ff_list)
+        # seg_list = torch.as_tensor(seg_list)
+
+        return np.array(ff_list), seg_list
+
     def forward(self, x, just_feats=False,):
         '''
         Input is B x T x N*C x H x W, where either
@@ -131,14 +207,23 @@ class CRW(nn.Module):
            N=1 -> list of images
         '''
         B, T, C, H, W = x.shape
-        _N, C = C//3, 3
+        # _N, C = C//3, 3
 
         #################################################################
-        # Pixels to Nodes
+        # Image/Pixels to Nodes
         #################################################################
-        x = x.transpose(1, 2).view(B, _N, C, T, H, W)
-        q, mm = self.pixels_to_nodes(x)
-        B, C, T, N = q.shape
+        # x = x.transpose(1, 2).view(B, _N, C, T, H, W)
+
+        # Pixels to Nodes
+        # q, mm = self.pixels_to_nodes(x)
+        # B, C, T, N = q.shape
+
+        # Image to Nodes
+        q, mm = self.image_to_nodes(x)
+        B = len(q)
+        T = len(q[0])
+        print("B, T = ", (B, T))
+        print((len(q[0][0]), len(q[0][0][0])))
 
         if just_feats:
             h, w = np.ceil(
@@ -148,8 +233,26 @@ class CRW(nn.Module):
         #################################################################
         # Compute walks
         #################################################################
+        print("\n### COMPUTE WALKS")
+
         walks = dict()
-        As = self.affinity(q[:, :, :-1], q[:, :, 1:])
+
+        # q = torch.from_numpy(q)
+
+        As = []
+        for t in range(T-1):
+            op1 = q[:, t]
+            op2 = q[:, t+1].T
+            print("OP1.shape = ", op1.shape)
+            print("OP2.shape = ", op2.shape)
+            As.append(op1 @ op2)
+
+        # As = self.affinity(q[:, :, :-1], q[:, :, 1:])
+
+        print("As len = ", len(As))
+        print("As item len = ", len(As[0]))
+        exit()
+
         A12s = [self.stoch_mat(As[:, i], do_dropout=True) for i in range(T-1)]
 
         # Palindromes

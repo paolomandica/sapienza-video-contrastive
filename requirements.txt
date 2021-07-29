@@ -10,3 +10,4 @@ opencv-python
 av
 dvc[gdrive]
 moviepy
+accelerate
