@@ -99,9 +99,9 @@ def main(args):
     print(args)
     print("torch version: ", torch.__version__)
     print("torchvision version: ", torchvision.__version__)
-    gpus_count = torch.cuda.device_count()
-    print('Available CUDA devices: ', gpus_count)
-    print('Current CUDA device: ', torch.cuda.current_device())
+    # gpus_count = torch.cuda.device_count()
+    # print('Available CUDA devices: ', gpus_count)
+    # print('Current CUDA device: ', torch.cuda.current_device())
 
     device = torch.device(args.device)
     torch.backends.cudnn.benchmark = True
