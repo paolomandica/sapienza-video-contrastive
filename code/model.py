@@ -248,19 +248,9 @@ class CRW(nn.Module):
 
         walks = dict()
 
-        # print("type(q[0]) = ", type(q[0]))
-        # print("len(q[0]) = ", len(q[0]))
-        # print("q[0].dtype = ", q[0].dtype)
-
         As = []
         for _q in q:
-            _As = []
-            for t in range(T-1):
-                op1 = _q[t]
-                op2 = _q[t+1].T
-                print("OP1.shape = ", op1.shape)
-                print("OP2.shape = ", op2.shape)
-                _As.append(op1 @ op2)
+            _As = [_q[t] @ _q[t+1].T for t in range(T-1)]
             As.append(_As)
 
         # As = self.affinity(q[:, :, :-1], q[:, :, 1:])
@@ -271,9 +261,6 @@ class CRW(nn.Module):
             A12s.append(_A12s)
 
         # A12s = [self.stoch_mat(As[:, i], do_dropout=True) for i in range(T-1)]
-
-        print("len(A12s) = ", len(A12s))
-        print("A12s[0][0] = ", A12s[0][0])
 
         # # Palindromes
         # if not self.sk_targets:
@@ -299,13 +286,18 @@ class CRW(nn.Module):
                 A21s.append(_A21s)
             
             AAs = []
-            for i in list(range(1, len(A12s))):
-                g = A12s[:i+1] + A21s[:i+1][::-1]
-                aar = aal = g[0]
-                for _a in g[1:]:
-                    aar, aal = aar @ _a, _a @ aal
-
-                AAs.append((f"l{i}", aal) if self.flip else (f"r{i}", aar))
+            
+            for _A12s, _A21s in zip(A12s, A21s):
+                _AAs = []
+                for t in list(range(1, len(_A12s))):
+                    g = _A12s[:t+1] + _A21s[:t+1][::-1]
+                    aar = aal = g[0]
+                    for _a in g[1:]:
+                        print("aar.shape = ", aar.shape)
+                        print("aal.shape = ", aal.shape)
+                        aar, aal = aar @ _a, _a @ aal
+                    _AAs.append((f"l{t}", aal) if self.flip else (f"r{t}", aar))
+                AAs.append(_AAs)
 
             for i, aa in AAs:
                 walks[f"cyc {i}"] = [aa, self.xent_targets(aa)]

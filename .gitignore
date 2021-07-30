@@ -1,3 +1,6 @@
+# Exclude runs/ which contains input data (subset) and directory for checkpoints
+
+runs/
 
 # Created by https://www.toptal.com/developers/gitignore/api/vscode,python,jupyternotebooks
 # Edit at https://www.toptal.com/developers/gitignore?templates=vscode,python,jupyternotebooks
