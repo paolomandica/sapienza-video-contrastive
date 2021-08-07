@@ -92,7 +92,7 @@ class CRW(nn.Module):
 
     def stoch_mat(self, A, zero_diagonal=False, do_dropout=True, do_sinkhorn=False):
         ''' Affinity -> Stochastic Matrix
-        
+
         Paolo and Anil: Modified for use with single matrices '''
 
         if do_dropout and self.edgedrop_rate > 0:
@@ -193,7 +193,7 @@ class CRW(nn.Module):
         # xx = x.contiguous().view(-1, c, h, w).type(torch.cuda.FloatTensor)
         # m = self.encoder(xx)
         # maps = m.view(B, T, *m.shape[-3:]).permute(0, 2, 1, 3, 4)
-        
+
         # L2 Norm
 
         B, C, T, H, W = maps.shape
@@ -233,8 +233,6 @@ class CRW(nn.Module):
         q, mm = self.image_to_nodes(x)
         B = len(q)
         T = len(q[0])
-        print("B, T = ", (B, T))
-        print((len(q[0][0]), len(q[0][0][0])))
 
         if just_feats:
             h, w = np.ceil(
@@ -256,8 +254,9 @@ class CRW(nn.Module):
         # As = self.affinity(q[:, :, :-1], q[:, :, 1:])
 
         A12s = []
-        for _As in As: # per batch
-            _A12s = [self.stoch_mat(_As[t], do_dropout=True) for t in range(T-1)]
+        for _As in As:  # per batch
+            _A12s = [self.stoch_mat(_As[t], do_dropout=True)
+                     for t in range(T-1)]
             A12s.append(_A12s)
 
         # A12s = [self.stoch_mat(As[:, i], do_dropout=True) for i in range(T-1)]
@@ -281,23 +280,25 @@ class CRW(nn.Module):
         # Palindromes
         if not self.sk_targets:
             A21s = []
-            for _As in As: # per batch
-                _A21s = [self.stoch_mat(_As[t].T, do_dropout=True) for t in range(T-1)]
+            for _As in As:  # per batch
+                _A21s = [self.stoch_mat(_As[t].T, do_dropout=True)
+                         for t in range(T-1)]
                 A21s.append(_A21s)
-            
+
             AAs = []
-            
+
             for _A12s, _A21s in zip(A12s, A21s):
                 _AAs = []
-                for t in list(range(1, len(_A12s))):
+                for t in range(1, len(_A12s)):
                     g = _A12s[:t+1] + _A21s[:t+1][::-1]
-                    aar = aal = g[0]
+                    aal = g[0]
                     for _a in g[1:]:
-                        print("aar.shape = ", aar.shape)
-                        print("aal.shape = ", aal.shape)
-                        aar, aal = aar @ _a, _a @ aal
-                    _AAs.append((f"l{t}", aal) if self.flip else (f"r{t}", aar))
+                        aal = aal @ _a
+                    _AAs.append((f"l{t}", aal))
                 AAs.append(_AAs)
+
+            import pdb
+            pdb.set_trace()
 
             for i, aa in AAs:
                 walks[f"cyc {i}"] = [aa, self.xent_targets(aa)]
