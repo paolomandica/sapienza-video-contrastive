@@ -283,6 +283,8 @@ data/
 kinetics/*
 kinetics_sample/*
 /davis_val
+checkpoints/*
+
 
 ### files ###
 *.zip
