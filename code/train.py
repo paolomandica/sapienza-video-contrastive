@@ -112,9 +112,9 @@ def main(args):
     valdir = os.path.join(args.data_path, 'val_256')
 
     st = time.time()
-    # cache_path = _get_cache_path(traindir)
+    cache_path = _get_cache_path(traindir)
     # fixed cache path for docker
-    cache_path = "./0c870b8733.pt"
+    # cache_path = "./0c870b8733.pt"
 
     transform_train = utils.augs.get_train_transforms(args)
 
@@ -261,6 +261,5 @@ def main(args):
 
 if __name__ == "__main__":
     args = utils.arguments.train_args()
-    args.logs_dir = "../../logs/"
     # args = utils.arguments.get_args()
     main(args)
