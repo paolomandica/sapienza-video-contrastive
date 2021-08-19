@@ -5,7 +5,6 @@ docker run --user "$(id -u):$(id -g)" -it --gpus '"device=0,4"' \
 -v /raid/data/francolu:/data_volume \
 paolomandica/sapienza-video-contrastive
 
-
 ##################### TRAINING - from ./code
 
 path_to_kinetics="../kinetics_sample/"
