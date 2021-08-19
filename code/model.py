@@ -7,6 +7,7 @@ import skimage
 
 from skimage.segmentation import slic
 from skimage.util import img_as_float
+import pdb
 
 EPS = 1e-20
 
@@ -101,8 +102,8 @@ class CRW(nn.Module):
     #     return F.softmax(A/self.temperature, dim=-1)
 
     def pixels_to_nodes(self, x):
-        ''' 
-            pixel maps -> node embeddings 
+        '''
+            pixel maps -> node embeddings
             Handles cases where input is a list of patches of images (N>1), or list of whole images (N=1)
 
             Inputs:
@@ -154,26 +155,33 @@ class CRW(nn.Module):
 
             img_feat = full_img_feat[:, t, :, :].permute(1, 2, 0)
 
-            feats = np.empty((0, C))
+            #Compute mask for each superpixel
+            sp_tensor = []
 
             for sp in np.unique(segments_slic):
                 # Select specific SP
                 single_sp = (segments_slic == sp) * 1
-                # consider portion of SP for receptive field of each ResNet feature
-                out = skimage.util.view_as_windows(
-                    single_sp, (int(h / H), int(w / W)), step=int(h / H))
-                # compute percentatge of intersection between SP and receptive field of the features
-                ww = np.sum(np.sum(out, axis=-1), axis=-1) / np.sum(single_sp)
-                # weight each features with relative intersection weight
-                weight_feat = np.repeat(np.expand_dims(
-                    ww, 2), C, 2) * img_feat.cpu().detach().numpy()
-                # extract a mean feature
-                sp_feat = np.mean(np.mean(weight_feat, axis=0),
-                                  axis=0).reshape(1, -1)
-                # add to the list of SP features
-                feats = np.concatenate((feats, sp_feat), 0)
+                sp_tensor.append(single_sp)
 
-            final_feats.append(torch.from_numpy(feats))
+            sp_tensor = np.stack(sp_tensor)
+
+            # Compute receptive fields relative to each superpixel mask
+            out = skimage.util.view_as_windows(sp_tensor, (len(np.unique(segments_slic)), int(h / H), int(w / W)), step=int(h / H)).squeeze(0)
+
+            # Extract features weight as normalized interesction of sp mask and receptive field of each features
+            ww_not_norm = np.sum(np.sum(out, axis=-1), axis=-1)
+            sp_size = np.sum(np.sum(sp_tensor, axis=-1), axis=-1)
+            ww_norm = ww_not_norm / sp_size
+
+            # Expand correctly weights and features map to use tensor instead of for loop
+            ww_norm_expand = torch.Tensor(np.repeat(np.expand_dims(ww_norm, 2), C, 2)).to(dtype=torch.long, device='cuda')
+            img_feat_expand = img_feat.unsqueeze(-1).repeat(1,1,1,ww_norm_expand.shape[-1])
+
+            # Weighted mean of the features
+            oo = ww_norm_expand * img_feat_expand
+            feats = torch.sum(torch.sum(oo, 0), 0).permute(1,0)
+
+            final_feats.append(feats)
 
         return final_feats, final_segment
 
@@ -213,10 +221,10 @@ class CRW(nn.Module):
             ff_list.append(ff)
             seg_list.append(seg)
 
-        ff_tensor = torch.empty((0, T, max_sp_num, 512), requires_grad=True)
+        ff_tensor = torch.empty((0, T, max_sp_num, 512), requires_grad=True, device='cuda')
         for ff in ff_list:
             ff_time_tensor = torch.empty(
-                (0, max_sp_num, 512), requires_grad=True)
+                (0, max_sp_num, 512), requires_grad=True, device='cuda')
             for sp_feats in ff:
                 temp_sp_feats = nn.functional.pad(sp_feats,
                                                   pad=(0, 0, 0, max_sp_num -
