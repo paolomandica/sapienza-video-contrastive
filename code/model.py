@@ -91,16 +91,6 @@ class CRW(nn.Module):
 
         return F.softmax(A/self.temperature, dim=-1)
 
-    # def stoch_mat(self, A, zero_diagonal=False, do_dropout=True, do_sinkhorn=False):
-    #     ''' Affinity -> Stochastic Matrix
-
-    #     Paolo and Anil: Modified for use with single matrices '''
-
-    #     if do_dropout and self.edgedrop_rate > 0:
-    #         A[torch.rand_like(A) < self.edgedrop_rate] = -1e20
-
-    #     return F.softmax(A/self.temperature, dim=-1)
-
     def pixels_to_nodes(self, x):
         '''
             pixel maps -> node embeddings
@@ -113,9 +103,8 @@ class CRW(nn.Module):
                 -- 'maps'  (B x N x C x T x H x W), node feature maps
         '''
         B, N, C, T, h, w = x.shape
-        # print("X.SHAPE = ", x.shape)
+
         maps = self.encoder(x.flatten(0, 1))
-        # print("MAPS = ", maps.shape)
         H, W = maps.shape[-2:]
 
         if self.featdrop_rate > 0:
@@ -134,8 +123,6 @@ class CRW(nn.Module):
         feats = feats.view(B, N, feats.shape[1], T).permute(0, 2, 3, 1)
         maps = maps.view(B, N, *maps.shape[1:])
 
-        # print("FINAL FEATS", feats.shape)
-        # print("FINAL MAPS", maps.shape)
         return feats, maps
 
     def extract_sp_feat(self, full_img, full_img_feat):
@@ -155,7 +142,7 @@ class CRW(nn.Module):
 
             img_feat = full_img_feat[:, t, :, :].permute(1, 2, 0)
 
-            #Compute mask for each superpixel
+            # Compute mask for each superpixel
             sp_tensor = []
 
             for sp in np.unique(segments_slic):
@@ -166,7 +153,8 @@ class CRW(nn.Module):
             sp_tensor = np.stack(sp_tensor)
 
             # Compute receptive fields relative to each superpixel mask
-            out = skimage.util.view_as_windows(sp_tensor, (len(np.unique(segments_slic)), int(h / H), int(w / W)), step=int(h / H)).squeeze(0)
+            out = skimage.util.view_as_windows(sp_tensor, (len(
+                np.unique(segments_slic)), int(h / H), int(w / W)), step=int(h / H)).squeeze(0)
 
             # Extract features weight as normalized interesction of sp mask and receptive field of each features
             ww_not_norm = np.sum(np.sum(out, axis=-1), axis=-1)
@@ -174,12 +162,14 @@ class CRW(nn.Module):
             ww_norm = ww_not_norm / sp_size
 
             # Expand correctly weights and features map to use tensor instead of for loop
-            ww_norm_expand = torch.Tensor(np.repeat(np.expand_dims(ww_norm, 2), C, 2)).to(dtype=torch.long, device='cuda')
-            img_feat_expand = img_feat.unsqueeze(-1).repeat(1,1,1,ww_norm_expand.shape[-1])
+            ww_norm_expand = torch.Tensor(np.repeat(np.expand_dims(ww_norm, 2), C, 2)).to(
+                dtype=torch.long, device='cuda')
+            img_feat_expand = img_feat.unsqueeze(-1).repeat(
+                1, 1, 1, ww_norm_expand.shape[-1])
 
             # Weighted mean of the features
             oo = ww_norm_expand * img_feat_expand
-            feats = torch.sum(torch.sum(oo, 0), 0).permute(1,0)
+            feats = torch.sum(torch.sum(oo, 0), 0).permute(1, 0)
 
             final_feats.append(feats)
 
@@ -220,7 +210,8 @@ class CRW(nn.Module):
             ff_list.append(ff)
             seg_list.append(seg)
 
-        ff_tensor = torch.empty((0, T, max_sp_num, 512), requires_grad=True, device='cuda')
+        ff_tensor = torch.empty((0, T, max_sp_num, 512),
+                                requires_grad=True, device='cuda')
         for ff in ff_list:
             ff_time_tensor = torch.empty(
                 (0, max_sp_num, 512), requires_grad=True, device='cuda')
@@ -242,21 +233,24 @@ class CRW(nn.Module):
            N>1 -> list of patches of images
            N=1 -> list of images
         '''
+
         B, T, C, H, W = x.shape
-        # _N, C = C//3, 3
 
         #################################################################
         # Image/Pixels to Nodes
         #################################################################
-        # x = x.transpose(1, 2).view(B, _N, C, T, H, W)
 
         # Pixels to Nodes
-        # q, mm = self.pixels_to_nodes(x)
-        # B, C, T, N = q.shape
+        if self.args.frame_aug == 'grid':
+            _N, C = C//3, 3
+            x = x.transpose(1, 2).view(B, _N, C, T, H, W)
+            q, mm = self.pixels_to_nodes(x)
 
         # Image to Nodes
-        q, mm = self.image_to_nodes(x)
-        q = q.permute(0, 3, 1, 2)
+        else:
+            q, mm = self.image_to_nodes(x)
+            q = q.permute(0, 3, 1, 2)
+
         B, C, T, N = q.shape
 
         if just_feats:
@@ -269,18 +263,7 @@ class CRW(nn.Module):
         #################################################################
         walks = dict()
 
-        # As = []
-        # for _q in q:
-        #     _As = [_q[t] @ _q[t+1].T for t in range(T-1)]
-        #     As.append(_As)
-
         As = self.affinity(q[:, :, :-1], q[:, :, 1:])
-
-        # A12s = []
-        # for _As in As:  # per batch
-        #     _A12s = [self.stoch_mat(_As[t], do_dropout=True)
-        #              for t in range(T-1)]
-        #     A12s.append(_A12s)
 
         A12s = [self.stoch_mat(As[:, i], do_dropout=True) for i in range(T-1)]
 
@@ -299,29 +282,6 @@ class CRW(nn.Module):
 
             for i, aa in AAs:
                 walks[f"cyc {i}"] = [aa, self.xent_targets(aa)]
-
-        # Palindromes
-        # if not self.sk_targets:
-        #     A21s = []
-        #     for _As in As:  # per batch
-        #         _A21s = [self.stoch_mat(_As[t].T, do_dropout=True)
-        #                  for t in range(T-1)]
-        #         A21s.append(_A21s)
-
-        #     AAs = []
-
-        #     for _A12s, _A21s in zip(A12s, A21s):
-        #         _AAs = []
-        #         for t in range(1, len(_A12s)):
-        #             g = _A12s[:t+1] + _A21s[:t+1][::-1]
-        #             aal = g[0]
-        #             for _a in g[1:]:
-        #                 aal = aal @ _a
-        #             _AAs.append((f"l{t}", aal))
-        #         AAs.append(_AAs)
-
-        #     for i, aa in AAs:
-        #         walks[f"cyc {i}"] = [aa, self.xent_targets(aa)]
 
         # Sinkhorn-Knopp Target (experimental)
         else:
