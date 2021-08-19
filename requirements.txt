@@ -5,8 +5,8 @@ matplotlib
 scikit-image
 scikit-learn
 pandas
-# wandb
-# visdom
+wandb
+visdom
 opencv-python
 av
 dvc[gdrive]
