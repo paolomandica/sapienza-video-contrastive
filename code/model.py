@@ -8,6 +8,7 @@ import skimage
 from skimage.segmentation import slic
 from skimage.util import img_as_float
 import pdb
+from fast_slic import Slic
 
 EPS = 1e-20
 
@@ -146,18 +147,29 @@ class CRW(nn.Module):
         final_feats = []
         final_segment = []
 
+        slic = Slic(num_components=50, compactness=30)
+
         for t in range(T):
 
+            #start_time = time.time()
             img = full_img[:, t, :, :]
-            img = img_as_float(img.cpu()).transpose(1, 2, 0)
-            segments_slic = slic(img, n_segments=50, compactness=30, sigma=0.5)
+            #print("IMG SHAPE:", img.shape, "IMG TYPE", type(img))
+            img = img.permute(1, 2, 0).cpu().numpy()
+            # img = img_as_float(img.cpu()).transpose(1, 2, 0) ### QUESTO PASSAGGIO SULLA CPU ANDREBBE EVITATO
+            img = img.astype(dtype='uint8', order='C')
+            #print("IMG SHAPE:", img.shape, "IMG TYPE", img.dtype)
+            # print("FLAG")
+            #segments_slic = slic(img, n_segments=50, compactness=30, sigma=0.5)
+            segments_slic = slic.iterate(img)
             final_segment.append(segments_slic)
 
             img_feat = full_img_feat[:, t, :, :].permute(1, 2, 0)
+            #print("SLIC %s", time.time()-start_time)
 
-            #Compute mask for each superpixel
+            # Compute mask for each superpixel
             sp_tensor = []
 
+            #start_time = time.time()
             for sp in np.unique(segments_slic):
                 # Select specific SP
                 single_sp = (segments_slic == sp) * 1
@@ -165,21 +177,40 @@ class CRW(nn.Module):
 
             sp_tensor = np.stack(sp_tensor)
 
+            print(sp_tensor.shape)
+            #print("SP computation %s", time.time()-start_time)
+
+            #start_time = time.time()
             # Compute receptive fields relative to each superpixel mask
-            out = skimage.util.view_as_windows(sp_tensor, (len(np.unique(segments_slic)), int(h / H), int(w / W)), step=int(h / H)).squeeze(0)
+            out = skimage.util.view_as_windows(sp_tensor, (len(
+                np.unique(segments_slic)), int(h / H), int(w / W)), step=int(h / H)).squeeze(0)
+            #print("FEAT SP computation 1 %s", time.time()-start_time)
 
+            #start_time = time.time()
             # Extract features weight as normalized interesction of sp mask and receptive field of each features
-            ww_not_norm = np.sum(np.sum(out, axis=-1), axis=-1)
-            sp_size = np.sum(np.sum(sp_tensor, axis=-1), axis=-1)
+
+            ww_not_norm = torch.sum(
+                torch.sum(torch.from_numpy(out).to('cuda'), dim=-1), dim=-1)
+            sp_size = torch.sum(torch.sum(torch.from_numpy(
+                sp_tensor).to('cuda'), dim=-1), dim=-1)
             ww_norm = ww_not_norm / sp_size
+            #print("FEAT SP computation 2 %s", time.time()-start_time)
 
+            #start_time = time.time()
             # Expand correctly weights and features map to use tensor instead of for loop
-            ww_norm_expand = torch.Tensor(np.repeat(np.expand_dims(ww_norm, 2), C, 2)).to(dtype=torch.long, device='cuda')
-            img_feat_expand = img_feat.unsqueeze(-1).repeat(1,1,1,ww_norm_expand.shape[-1])
+            ww_norm_expand = ww_norm.unsqueeze(2).repeat(1, 1, C, 1)
+            #print("FEAT SP computation 3 %s", time.time()-start_time)
 
+            #start_time = time.time()
+            img_feat_expand = img_feat.unsqueeze(-1).repeat(
+                1, 1, 1, ww_norm_expand.shape[-1])
+            #print("FEAT SP computation 4 %s", time.time()-start_time)
+
+            #start_time = time.time()
             # Weighted mean of the features
             oo = ww_norm_expand * img_feat_expand
-            feats = torch.sum(torch.sum(oo, 0), 0).permute(1,0)
+            feats = torch.sum(torch.sum(oo, 0), 0).permute(1, 0)
+            #print("FEAT SP computation 5 %s", time.time()-start_time)
 
             final_feats.append(feats)
 
@@ -221,7 +252,8 @@ class CRW(nn.Module):
             ff_list.append(ff)
             seg_list.append(seg)
 
-        ff_tensor = torch.empty((0, T, max_sp_num, 512), requires_grad=True, device='cuda')
+        ff_tensor = torch.empty((0, T, max_sp_num, 512),
+                                requires_grad=True, device='cuda')
         for ff in ff_list:
             ff_time_tensor = torch.empty(
                 (0, max_sp_num, 512), requires_grad=True, device='cuda')
