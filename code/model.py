@@ -92,16 +92,6 @@ class CRW(nn.Module):
 
         return F.softmax(A/self.temperature, dim=-1)
 
-    # def stoch_mat(self, A, zero_diagonal=False, do_dropout=True, do_sinkhorn=False):
-    #     ''' Affinity -> Stochastic Matrix
-
-    #     Paolo and Anil: Modified for use with single matrices '''
-
-    #     if do_dropout and self.edgedrop_rate > 0:
-    #         A[torch.rand_like(A) < self.edgedrop_rate] = -1e20
-
-    #     return F.softmax(A/self.temperature, dim=-1)
-
     def pixels_to_nodes(self, x):
         '''
             pixel maps -> node embeddings
@@ -114,9 +104,8 @@ class CRW(nn.Module):
                 -- 'maps'  (B x N x C x T x H x W), node feature maps
         '''
         B, N, C, T, h, w = x.shape
-        # print("X.SHAPE = ", x.shape)
+
         maps = self.encoder(x.flatten(0, 1))
-        # print("MAPS = ", maps.shape)
         H, W = maps.shape[-2:]
 
         if self.featdrop_rate > 0:
@@ -135,8 +124,6 @@ class CRW(nn.Module):
         feats = feats.view(B, N, feats.shape[1], T).permute(0, 2, 3, 1)
         maps = maps.view(B, N, *maps.shape[1:])
 
-        # print("FINAL FEATS", feats.shape)
-        # print("FINAL MAPS", maps.shape)
         return feats, maps
 
     def extract_sp_feat(self, full_img, full_img_feat):
@@ -232,7 +219,6 @@ class CRW(nn.Module):
         # xx = x.contiguous().view(-1, c, h, w).type(torch.cuda.FloatTensor)
         # m = self.encoder(xx)
         # maps = m.view(B, T, *m.shape[-3:]).permute(0, 2, 1, 3, 4)
-
         # L2 Norm
 
         B, C, T, H, W = maps.shape
@@ -275,21 +261,24 @@ class CRW(nn.Module):
            N>1 -> list of patches of images
            N=1 -> list of images
         '''
+
         B, T, C, H, W = x.shape
-        # _N, C = C//3, 3
 
         #################################################################
         # Image/Pixels to Nodes
         #################################################################
-        # x = x.transpose(1, 2).view(B, _N, C, T, H, W)
 
         # Pixels to Nodes
-        # q, mm = self.pixels_to_nodes(x)
-        # B, C, T, N = q.shape
+        if self.args.frame_aug == 'grid':
+            _N, C = C//3, 3
+            x = x.transpose(1, 2).view(B, _N, C, T, H, W)
+            q, mm = self.pixels_to_nodes(x)
 
         # Image to Nodes
-        q, mm = self.image_to_nodes(x)
-        q = q.permute(0, 3, 1, 2)
+        else:
+            q, mm = self.image_to_nodes(x)
+            q = q.permute(0, 3, 1, 2)
+
         B, C, T, N = q.shape
 
         if just_feats:
@@ -302,18 +291,7 @@ class CRW(nn.Module):
         #################################################################
         walks = dict()
 
-        # As = []
-        # for _q in q:
-        #     _As = [_q[t] @ _q[t+1].T for t in range(T-1)]
-        #     As.append(_As)
-
         As = self.affinity(q[:, :, :-1], q[:, :, 1:])
-
-        # A12s = []
-        # for _As in As:  # per batch
-        #     _A12s = [self.stoch_mat(_As[t], do_dropout=True)
-        #              for t in range(T-1)]
-        #     A12s.append(_A12s)
 
         A12s = [self.stoch_mat(As[:, i], do_dropout=True) for i in range(T-1)]
 
@@ -332,29 +310,6 @@ class CRW(nn.Module):
 
             for i, aa in AAs:
                 walks[f"cyc {i}"] = [aa, self.xent_targets(aa)]
-
-        # Palindromes
-        # if not self.sk_targets:
-        #     A21s = []
-        #     for _As in As:  # per batch
-        #         _A21s = [self.stoch_mat(_As[t].T, do_dropout=True)
-        #                  for t in range(T-1)]
-        #         A21s.append(_A21s)
-
-        #     AAs = []
-
-        #     for _A12s, _A21s in zip(A12s, A21s):
-        #         _AAs = []
-        #         for t in range(1, len(_A12s)):
-        #             g = _A12s[:t+1] + _A21s[:t+1][::-1]
-        #             aal = g[0]
-        #             for _a in g[1:]:
-        #                 aal = aal @ _a
-        #             _AAs.append((f"l{t}", aal))
-        #         AAs.append(_AAs)
-
-        #     for i, aa in AAs:
-        #         walks[f"cyc {i}"] = [aa, self.xent_targets(aa)]
 
         # Sinkhorn-Knopp Target (experimental)
         else:
