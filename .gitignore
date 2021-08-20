@@ -282,6 +282,7 @@ results/
 data/
 kinetics/*
 kinetics_sample/*
+kinetics400_partial/*
 /davis_val
 checkpoints/*
 
