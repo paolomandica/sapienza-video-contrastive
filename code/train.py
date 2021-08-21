@@ -4,6 +4,7 @@ import time
 import sys
 import numpy as np
 import json
+import pdb
 
 import torch
 import torch.utils.data
@@ -36,11 +37,20 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
 
     for step, batch in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         start_time = time.time()
-
-        video, orig = batch
+        
+        video, sp_mask = batch
+        sp_mask = sp_mask.to(device)
+        video, orig = video
         video = video.to(device)
-        # print("VIDEO (BATCH) SHAPE = ", video.shape)
-        output, loss, diagnostics = model(video)
+
+        print("VIDEO (BATCH) SHAPE = ", video.shape)
+        print("SP (BATCH) SHAPE = ", sp_mask.shape)
+
+        output, loss, diagnostics = model(video, sp_mask)
+
+        print(loss)
+        print(loss.mean())
+        print(loss.mean().item())
 
         # orig = orig.to(device)
         # print("ORIG (BATCH) SHAPE = ", orig.shape)
@@ -91,7 +101,7 @@ def _get_cache_path(filepath):
 
 def collate_fn(batch):
     # remove audio from the batch
-    batch = [d[0] for d in batch]
+    batch = [(d[0], d[1]) for d in batch]
     return default_collate(batch)
 
 

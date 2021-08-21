@@ -6,6 +6,8 @@ from torchvision.datasets.folder import make_dataset
 from torchvision.datasets.vision import VisionDataset
 
 import numpy as np
+import torch
+import pdb
 
 class Kinetics400(VisionDataset):
     """
@@ -44,6 +46,7 @@ class Kinetics400(VisionDataset):
         super(Kinetics400, self).__init__(root)
         extensions = extensions
 
+        
         classes = list(sorted(list_dir(root)))
         class_to_idx = {classes[i]: i for i in range(len(classes))}
         
@@ -57,6 +60,7 @@ class Kinetics400(VisionDataset):
             frame_rate,
             _precomputed_metadata,
         )
+        pdb.set_trace()
         self.transform = transform
 
     def __len__(self):
@@ -73,7 +77,12 @@ class Kinetics400(VisionDataset):
                 idx = np.random.randint(self.__len__())
 
         label = self.samples[video_idx][1]
+
+        sp_mask_root = self.samples[video_idx][0].replace('train_256', 'masks')[:-4]
+        # sp_mask = torch.load(sp_mask_root + '.pt')
+        sp_mask = torch.randn((50, 4, 256, 256))
+
         if self.transform is not None:
             video = self.transform(video)
 
-        return video, audio, label
+        return video, sp_mask, audio, label
