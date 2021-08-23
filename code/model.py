@@ -147,8 +147,6 @@ class CRW(nn.Module):
         final_feats = []
         final_segment = []
 
-        
-
         # slic = Slic(num_components=50, compactness=30)
 
         for t in range(T):
@@ -177,7 +175,8 @@ class CRW(nn.Module):
 
             #start_time = time.time()
             # Compute receptive fields relative to each superpixel mask
-            out = skimage.util.view_as_windows(sp_tensor, (sp_tensor.shape[0], int(h / H), int(w / W)), step=int(h / H)).squeeze(0)
+            out = skimage.util.view_as_windows(sp_tensor, (sp_tensor.shape[0], int(
+                h / H), int(w / W)), step=int(h / H)).squeeze(0)
             #print("FEAT SP computation 1 %s", time.time()-start_time)
 
             #start_time = time.time()
@@ -385,7 +384,7 @@ class CRW(nn.Module):
         #################################################################
         # Visualizations
         #################################################################
-        if (np.random.random() < 0.02) and (self.vis is not None):  # and False:
+        if (np.random.random() < 0.02) and (self.vis is not None) and False:
             with torch.no_grad():
                 self.visualize_frame_pair(x, q, mm)
                 if _N > 1:  # and False:
