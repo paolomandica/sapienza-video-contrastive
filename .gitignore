@@ -280,9 +280,10 @@ fabric.properties
 ### folders ###
 results/
 data/
-kinetics/train_256/*
+kinetics/*
 kinetics_sample/*
 /davis_val
+checkpoints/*
 
 ### files ###
 *.zip
