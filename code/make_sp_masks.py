@@ -1,3 +1,5 @@
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from tqdm import tqdm
 import torch
 import pdb
 import os
@@ -5,21 +7,25 @@ import subprocess
 import utils
 import re
 import pickle
+import sys
+import imageio
 
 from pathlib import Path
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from time import time
 from datetime import timedelta
 from multiprocessing import Pool
 from functools import partial
 from multiprocessing import current_process
 from collections import defaultdict
+from joblib import Parallel, delayed
 
 from utils import arguments
 from data.kinetics import Kinetics400
 
 from torch import nn
 from torchvision import models
+from torchvision.io import read_video
 from torchvision.datasets.video_utils import VideoClips
 from pathlib import Path
 from model import CRW
@@ -43,33 +49,19 @@ frame_skip = 8
 
 
 def make_sp_masks_clip(video, output_path):
-
     slic = Slic(num_components=50, compactness=30)
-
-    final_segment = []
     sp_tensor_time = []
 
-    for t in tqdm(range(video.shape[1])):
+    for t in range(video.shape[1]):
 
         img = video[:, t, :, :]
         img = img.permute(1, 2, 0).cpu().numpy()
         img = img.astype(dtype='uint8', order='C')
         segments_slic = slic.iterate(img)
-        final_segment.append(segments_slic)
 
-        # Compute mask for each superpixel
-        sp_tensor = []
+        sp_tensor_time.append(torch.from_numpy(segments_slic))
 
-        for sp in np.unique(segments_slic):
-            # Select specific SP
-            single_sp = (segments_slic == sp) * 1
-            sp_tensor.append(single_sp)
-
-        sp_tensor = np.stack(sp_tensor)
-        sp_tensor_time.append(sp_tensor)
-
-    with open(output_path+'.txt', "wb") as fp:   #Pickling
-            pickle.dump(sp_tensor_time, fp)
+    torch.save(torch.stack(sp_tensor_time), output_path+'.pt')
 
 
 def makedirs(dir1, dir2):
@@ -79,19 +71,20 @@ def makedirs(dir1, dir2):
     return subdirs
 
 
-
 def generate_sp_mask(video_clips, video_list, idx):
 
-    video, _, _, _ = video_clips.get_clip(idx)
-    video = video.permute(3,0,1,2) # Shape (C, T  H, W)
-    output_path = re.sub("train_256", "masks", video_list[idx])
+    output_path = video_list[idx].replace("train_256", "masks")
 
-    if os.path.isfile(output_path[:-4]+'.txt'):
-        pass
+    if os.path.isfile(output_path[:-4]+'.pt'):
+        return
     else:
+        video, _, _, _ = video_clips.get_clip(idx)
+
+        video = video.permute(3, 0, 1, 2)  # Shape (C, T  H, W)
         make_sp_masks_clip(video, output_path[:-4])
 
-
+    # if idx % 10 == 0:
+    #     print("clip %d / %d" % (idx, len(video_clips)))
 
 
 def make_sp_masks(input_dir, output_dir, workers=1):
@@ -104,13 +97,12 @@ def make_sp_masks(input_dir, output_dir, workers=1):
 
     classes = list(sorted(list_dir(input_dir)))
     class_to_idx = {classes[i]: i for i in range(len(classes))}
-    # class_to_idx = {subdirs[i]: i for i in range(tot_dirs)}
     extensions = ('mp4',)
-    
-    samples = make_dataset(input_dir, class_to_idx, extensions, is_valid_file=None)
+
+    samples = make_dataset(input_dir, class_to_idx,
+                           extensions, is_valid_file=None)
 
     video_list = [sample[0] for sample in samples]
-
 
     import hashlib
     h = hashlib.sha1(input_dir.encode()).hexdigest()
@@ -121,8 +113,8 @@ def make_sp_masks(input_dir, output_dir, workers=1):
     print("Loading dataset_train from {}".format(cache_path))
     dataset, _ = torch.load(cache_path)
     cached = dict(video_paths=dataset.video_clips.video_paths,
-                    video_fps=dataset.video_clips.video_fps,
-                    video_pts=dataset.video_clips.video_pts)
+                  video_fps=dataset.video_clips.video_fps,
+                  video_pts=dataset.video_clips.video_pts)
 
     video_clips = VideoClips(
         video_list,
@@ -131,18 +123,14 @@ def make_sp_masks(input_dir, output_dir, workers=1):
         frame_rate=8,
         _precomputed_metadata=cached)
 
+    indices = [idx for idx in range(len(video_clips))]
 
-    
-    func = partial(generate_sp_mask, video_clips=video_clips, video_list=video_list)
+    for idx in tqdm(indices):
+        generate_sp_mask(video_clips, video_list, idx)
 
-    pool = Pool(20)
+    # func = partial(generate_sp_mask, video_clips, video_list)
 
-    pool.map(func, [idx for idx in range(len(video_clips))])
-
-    pool.close()
-
-    #for idx in tqdm(range(len(video_clips))):
-        
+    # Parallel(n_jobs=20, require='sharedmem')(delayed(func)(i) for i in tqdm(indices))
 
     end = time()
     tot_time = str(timedelta(seconds=round(end-start)))
