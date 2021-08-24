@@ -201,7 +201,6 @@ def train_args():
                                      str(dt.day), args.name, name)
 
     utils.mkdir(args.output_dir)
-    utils.mkdir(args.logs_dir)
 
     return args
 

@@ -20,6 +20,9 @@ from torchvision.datasets.samplers.clip_sampler import RandomClipSampler, Unifor
 import utils
 from model import CRW
 
+# don't want wandb logs to sync to the cloud
+# os.environ['WANDB_MODE'] = 'offline'
+
 
 def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, print_freq,
                     vis=None, checkpoint_fn=None, accelerator=None):
@@ -42,7 +45,7 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
         output, loss, diagnostics = model(video)
         loss = loss.mean()
 
-        if vis is not None and np.random.random() < 0.01:
+        if vis is not None:  # and np.random.random() < 0.01:
             vis.wandb_init(model)
             vis.log(dict(loss=loss.mean().item()))
             vis.log({k: v.mean().item() for k, v in diagnostics.items()})
