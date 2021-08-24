@@ -183,7 +183,7 @@ def main(args):
     def make_data_sampler(is_train, dataset):
         torch.manual_seed(0)
         if hasattr(dataset, 'video_clips'):
-            _sampler = RandomClipSampler  # UniformClipSampler
+            _sampler = UniformClipSampler  # RandomClipSampler
             return _sampler(dataset.video_clips, args.clips_per_video)
         else:
             return torch.utils.data.sampler.RandomSampler(dataset) if is_train else None

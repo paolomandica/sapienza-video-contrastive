@@ -48,8 +48,8 @@ class Kinetics400(VisionDataset):
         label (int): class of the video clip
     """
 
-    def _init_(self, root, frames_per_clip, step_between_clips=1, frame_rate=None, extensions=('mp4',), transform=None, cached=None, _precomputed_metadata=None):
-        super(Kinetics400, self)._init_(root)
+    def __init__(self, root, frames_per_clip, step_between_clips=1, frame_rate=None, extensions=('mp4',), transform=None, cached=None, _precomputed_metadata=None):
+        super(Kinetics400, self).__init__(root)
         extensions = extensions
 
         classes = list(sorted(list_dir(root)))
@@ -61,7 +61,7 @@ class Kinetics400(VisionDataset):
         video_list = [x[0] for x in self.samples]
         self.video_list = video_list
 
-        print(len(video_list), frames_per_clip, step_between_clips, frame_rate)
+        # print(len(video_list), frames_per_clip, step_between_clips, frame_rate)
         self.video_clips = VideoClips(
             video_list,
             frames_per_clip,
@@ -69,31 +69,22 @@ class Kinetics400(VisionDataset):
             frame_rate,
             _precomputed_metadata,
         )
-        print(self.video_clips.num_clips())
+        # print(self.video_clips.num_clips())
         self.transform = transform
 
-        output_path = root.replace("train_256", "masks")
-        Path(output_path).mkdir(parents=True, exist_ok=True)
-        makedirs(root, output_path)
 
-    def _len_(self):
+    def __len__(self):
         return self.video_clips.num_clips()
 
-    def _getitem_(self, idx):
+    def __getitem__(self, idx):
         success = False
         while not success:
             try:
                 video, audio, info, video_idx = self.video_clips.get_clip(idx)
 
-                print("VIDEO IDX = ", video_idx)
-
-                # save sp mask
-                output_path = self.video_list[video_idx].replace(
-                    "train_256", "masks")
-                if not os.path.isfile(output_path[:-4]+'.pt'):
-                    # Shape (C, T  H, W)
-                    make_sp_masks_clip(video.permute(
-                        3, 0, 1, 2), output_path[:-4])
+                # Load also sp_mask
+                output_path = self.video_list[video_idx].replace("train_256", "masks")
+                sp_mask = torch.load(output_path[:-4]+'__'+str(idx)+'.pt')
 
                 success = True
             except Exception as e:
@@ -103,34 +94,7 @@ class Kinetics400(VisionDataset):
 
         label = self.samples[video_idx][1]
 
-        sp_mask_root = self.samples[video_idx][0].replace('train_256', 'masks')[
-            :-4]
-        # sp_mask = torch.load(sp_mask_root + '.pt')
-        sp_mask = torch.randn((50, 4, 256, 256))
-
         if self.transform is not None:
             video = self.transform(video)
 
         return video, sp_mask, audio, label
-
-
-def makedirs(dir1, dir2):
-    subdirs = [f.name for f in os.scandir(dir1) if f.is_dir()]
-    for subdir in subdirs:
-        Path(os.path.join(dir2, subdir)).mkdir(exist_ok=True)
-
-
-def make_sp_masks_clip(video, output_path):
-    slic = Slic(num_components=50, compactness=30)
-    sp_tensor_time = []
-
-    for t in range(video.shape[1]):
-
-        img = video[:, t, :, :]
-        img = img.permute(1, 2, 0).cpu().numpy()
-        img = img.astype(dtype='uint8', order='C')
-        segments_slic = slic.iterate(img)
-
-        sp_tensor_time.append(torch.from_numpy(segments_slic))
-
-    torch.save(torch.stack(sp_tensor_time), output_path+'.pt')
