@@ -22,7 +22,7 @@ from model import CRW
 
 
 def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, print_freq,
-                    vis=None, checkpoint_fn=None, accelerator=None, log_fn=None, logs_dict=None):
+                    vis=None, checkpoint_fn=None, accelerator=None):
 
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -38,7 +38,7 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
 
         video, orig = batch
         video = video.to(device)
-        # print("VIDEO (BATCH) SHAPE = ", video.shape)
+
         output, loss, diagnostics = model(video)
         loss = loss.mean()
 
@@ -49,10 +49,6 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
 
         if checkpoint_fn is not None and np.random.random() < 0.005:
             checkpoint_fn()
-
-        if logs_dict is not None:
-            logs_dict[epoch] = logs_dict.get(epoch, {})
-            logs_dict[epoch][step] = loss.mean().item()
 
         optimizer.zero_grad()
 
@@ -71,8 +67,6 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
 
     if checkpoint_fn is not None:
         checkpoint_fn()
-    if log_fn is not None:
-        log_fn(logs_dict)
 
 
 def _get_cache_path(filepath):
@@ -107,9 +101,9 @@ def main(args):
     valdir = os.path.join(args.data_path, 'val_256')
 
     st = time.time()
-    # cache_path = _get_cache_path(traindir)
+    cache_path = _get_cache_path(traindir)
     # fixed cache path for docker
-    cache_path = "./0c870b8733.pt"
+    # cache_path = "./0c870b8733.pt"
 
     transform_train = utils.augs.get_train_transforms(args)
 
@@ -230,21 +224,13 @@ def main(args):
                 checkpoint,
                 os.path.join(args.output_dir, 'checkpoint.pth'))
 
-    def save_training_logs(logs_dict):
-        if args.logs_dir:
-            with open(os.path.join(args.logs_dir, 'log.json'), 'w') as fp:
-                json.dump(logs_dict, fp, indent=4)
-
-    logs = dict()
-
     print("Start training")
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
         train_one_epoch(model, optimizer, lr_scheduler, data_loader,
                         device, epoch, args.print_freq,
                         vis=vis, checkpoint_fn=save_model_checkpoint,
-                        accelerator=accelerator, log_fn=save_training_logs,
-                        logs_dict=logs)
+                        accelerator=accelerator)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))

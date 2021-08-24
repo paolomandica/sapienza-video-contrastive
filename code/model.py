@@ -37,12 +37,12 @@ class CRW(nn.Module):
         dummy = torch.zeros(1, 3, 1, in_sz, in_sz).to(
             next(self.encoder.parameters()).device)
         dummy_out = self.encoder(dummy)
-        print("Dummy output ====>", dummy_out.shape)
+
         self.enc_hid_dim = dummy_out.shape[1]
         self.map_scale = in_sz // dummy_out.shape[-1]
         out = self.encoder(torch.zeros(1, 3, 1, 320, 320).to(
             next(self.encoder.parameters()).device))
-        print("OUT SHAPE:", out.shape)
+
         # scale = out[1].shape[-2:]
 
     def make_head(self, depth=1):
@@ -99,9 +99,8 @@ class CRW(nn.Module):
                 -- 'maps'  (B x N x C x T x H x W), node feature maps
         '''
         B, N, C, T, h, w = x.shape
-        # print("X.SHAPE = ", x.shape)
+
         maps = self.encoder(x.flatten(0, 1))
-        # print("MAPS = ", maps.shape)
         H, W = maps.shape[-2:]
 
         if self.featdrop_rate > 0:
@@ -120,8 +119,6 @@ class CRW(nn.Module):
         feats = feats.view(B, N, feats.shape[1], T).permute(0, 2, 3, 1)
         maps = maps.view(B, N, *maps.shape[1:])
 
-        # print("FINAL FEATS", feats.shape)
-        # print("FINAL MAPS", maps.shape)
         return feats, maps
 
     def forward(self, x, just_feats=False,):
@@ -198,7 +195,7 @@ class CRW(nn.Module):
         #################################################################
         # Visualizations
         #################################################################
-        if (np.random.random() < 0.02) and (self.vis is not None):  # and False:
+        if (np.random.random() < 0.02) and (self.vis is not None) and False:
             with torch.no_grad():
                 self.visualize_frame_pair(x, q, mm)
                 if _N > 1:  # and False:
