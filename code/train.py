@@ -194,10 +194,10 @@ def main(args):
 
     accelerator = None
     if args.data_parallel:
-        # model = torch.nn.parallel.DataParallel(model)
-        accelerator = Accelerator()
-        model, optimizer, data_loader = accelerator.prepare(
-            model, optimizer, data_loader)
+        model = torch.nn.parallel.DataParallel(model)
+        # accelerator = Accelerator()
+        # model, optimizer, data_loader = accelerator.prepare(
+        #     model, optimizer, data_loader)
 
     if args.partial_reload:
         checkpoint = torch.load(args.partial_reload, map_location='cpu')
