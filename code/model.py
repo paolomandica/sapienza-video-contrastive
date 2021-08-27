@@ -140,6 +140,11 @@ class CRW(nn.Module):
         return feats, maps
 
     def extract_sp_feat(self, full_img, full_img_feat, sp_mask):
+        '''
+        full_img is in the shape of c, T, h, w
+        full_img_feat is in the shape of C, T, H, W
+        sp_mask is in the shape of T, h, w
+        '''
 
         c, T, h, w = full_img.shape
         C, T, H, W = full_img_feat.shape
@@ -156,6 +161,13 @@ class CRW(nn.Module):
             img = img.astype(dtype='uint8', order='C')
             segments_slic = slic.iterate(img)
             final_segment.append(segments_slic)
+            '''
+
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+            img_feat = full_img_feat[:, t, :, :].permute(1, 2, 0) # Shape is: (H, W, C) = (32, 32, 512)
+            segments_slic = sp_mask[t, :, :] # Shape is: (h, w) = (256, 256)
+
 
             # Compute mask for each superpixel
             sp_tensor = []
@@ -165,45 +177,26 @@ class CRW(nn.Module):
                 single_sp = (segments_slic == sp) * 1
                 sp_tensor.append(single_sp)
 
-            sp_tensor = np.stack(sp_tensor)'''
+            sp_tensor = np.stack(sp_tensor) # This has shape: (num_sp, h, w) = (~50, 256, 256)
 
-            img_feat = full_img_feat[:, t, :, :].permute(1, 2, 0)
-
-            sp_tensor = sp_mask[:, t, :, :]
-
-            #print("SP computation %s", time.time()-start_time)
-
-            #start_time = time.time()
             # Compute receptive fields relative to each superpixel mask
-            out = skimage.util.view_as_windows(sp_tensor, (sp_tensor.shape[0], int(
-                h / H), int(w / W)), step=int(h / H)).squeeze(0)
-            #print("FEAT SP computation 1 %s", time.time()-start_time)
-
-            #start_time = time.time()
+            out = skimage.util.view_as_windows(sp_tensor, (sp_tensor.shape[0], int(h / H), int(w / W)), step=int(h / H)).squeeze(0)
+            # This should have as shape (num_windows, num_windows, num_sp, window_size, window_size) = (32,32,~50,8,8)
+            
             # Extract features weight as normalized interesction of sp mask and receptive field of each features
-
-            ww_not_norm = torch.sum(
-                torch.sum(torch.from_numpy(out).to('cuda'), dim=-1), dim=-1)
-            sp_size = torch.sum(torch.sum(torch.from_numpy(
-                sp_tensor).to('cuda'), dim=-1), dim=-1)
+            ww_not_norm = torch.sum(torch.sum(torch.from_numpy(out).to(device), dim=-1), dim=-1) # size of superpixels for each receptive field - shape is (num_windows, num_windows, num_sp) = (32,32,~50)
+            sp_size = torch.sum(torch.sum(torch.from_numpy(sp_tensor).to(device), dim=-1), dim=-1)  # Size of each superpixel - shape is num_sp = = (~50)
             ww_norm = ww_not_norm / sp_size
-            #print("FEAT SP computation 2 %s", time.time()-start_time)
-
-            #start_time = time.time()
+            
             # Expand correctly weights and features map to use tensor instead of for loop
-            ww_norm_expand = ww_norm.unsqueeze(2).repeat(1, 1, C, 1)
-            #print("FEAT SP computation 3 %s", time.time()-start_time)
+            ww_norm_expand = ww_norm.unsqueeze(2).repeat(1, 1, C, 1)  # Shape is: (num_windows, num_windows, C, num_sp) = (32,32,512,~50)
+            img_feat_expand = img_feat.unsqueeze(-1).repeat(1, 1, 1, ww_norm_expand.shape[-1])  # Shape is: (num_feat, num_feat, C, num_sp) = (32,32,512,~50)
+            # Please note num_windows and num_feat are the same. 
+            # So we repeat weights for each feature channels and feat for each superpixels, because they are independent       
 
-            #start_time = time.time()
-            img_feat_expand = img_feat.unsqueeze(-1).repeat(
-                1, 1, 1, ww_norm_expand.shape[-1])
-            #print("FEAT SP computation 4 %s", time.time()-start_time)
-
-            #start_time = time.time()
             # Weighted mean of the features
             oo = ww_norm_expand * img_feat_expand
-            feats = torch.sum(torch.sum(oo, 0), 0).permute(1, 0)
-            #print("FEAT SP computation 5 %s", time.time()-start_time)
+            feats = torch.sum(torch.sum(oo, 0), 0).permute(1, 0) # Shape is: (~50, 512) 
 
             final_feats.append(feats)
 
@@ -218,7 +211,7 @@ class CRW(nn.Module):
         '''
 
         B, T, c, h, w = x.shape
-        x = x.permute(0, 2, 1, 3, 4)
+        x = x.permute(0, 2, 1, 3, 4) # New shape B, c, T, h, w 
         maps = self.encoder(x)
         # print("MAPS.SHAPE = ", maps.shape)
 
@@ -236,7 +229,7 @@ class CRW(nn.Module):
         max_sp_num = 0
 
         for b in range(B):
-            ff, seg = self.extract_sp_feat(x[b], maps[b], sp_mask[b])
+            ff, seg = self.extract_sp_feat(x[b], maps[b], sp_mask[b, :, 0, : , :])
 
             temp_max_sp_num = max([y.shape[0] for y in ff])
             if temp_max_sp_num > max_sp_num:
@@ -245,20 +238,18 @@ class CRW(nn.Module):
             ff_list.append(ff)
             seg_list.append(seg)
 
-        ff_tensor = torch.empty((0, T, max_sp_num, 512),
-                                requires_grad=True, device='cuda')
+        ff_tensor = torch.empty((0, T, max_sp_num, 512), requires_grad=True, device='cuda')
+
         for ff in ff_list:
-            ff_time_tensor = torch.empty(
-                (0, max_sp_num, 512), requires_grad=True, device='cuda')
+            ff_time_tensor = torch.empty((0, max_sp_num, 512), requires_grad=True, device='cuda')
+           
             for sp_feats in ff:
                 temp_sp_feats = nn.functional.pad(sp_feats,
-                                                  pad=(0, 0, 0, max_sp_num -
-                                                       sp_feats.shape[0]),
+                                                  pad=(0, 0, 0, max_sp_num - sp_feats.shape[0]),
                                                   mode="constant").unsqueeze(0)
-                ff_time_tensor = torch.cat(
-                    (ff_time_tensor, temp_sp_feats), dim=0)
-            ff_tensor = torch.cat(
-                (ff_tensor, ff_time_tensor.unsqueeze(0)), dim=0)
+                ff_time_tensor = torch.cat((ff_time_tensor, temp_sp_feats), dim=0)
+            
+            ff_tensor = torch.cat((ff_tensor, ff_time_tensor.unsqueeze(0)), dim=0)
 
         return ff_tensor, seg_list
 
