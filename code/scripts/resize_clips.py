@@ -10,6 +10,9 @@ from multiprocessing import Pool
 from functools import partial
 from multiprocessing import current_process
 
+from torchvision.datasets.folder import make_dataset
+from torchvision.datasets.utils import list_dir
+
 
 def resize_clip_mpy(input_path, output_path, size=256, logger="bar", threads=6):
     clip = mp.VideoFileClip(input_path, audio=False)
@@ -17,12 +20,20 @@ def resize_clip_mpy(input_path, output_path, size=256, logger="bar", threads=6):
     clip_resized.write_videofile(output_path, logger=logger, threads=threads)
 
 
-def resize_clip(input_path, output_path, size=256, logger=None, threads=None):
+def resize_clip(video_path, output_path, size=256):
+    if os.path.isfile(output_path):
+        st_size = Path(video_path).stat().st_size
+        if st_size == 0:
+            ciao = 0
+        else:
+            return
+
     size = str(size)+':'+str(size)
     subprocess.call(
-        ['ffmpeg', '-y', '-hwaccel', 'cuda',
-         '-i', input_path, '-vf', 'scale='+size, '-an',
-         '-c:v', 'libopenh264', output_path])
+        ['ffmpeg', '-y',  # '-hwaccel', 'cuda',
+         '-i', video_path, '-vf', 'scale='+size, '-an',
+         '-c:v', 'libopenh264', output_path,
+         '-hide_banner', '-loglevel', 'error'])
 
 
 def resize_dir(input_dir, output_dir, size, subdir):
@@ -36,9 +47,10 @@ def resize_dir(input_dir, output_dir, size, subdir):
         output_path = os.path.join(output_dir, subdir, clip)
         if not os.path.exists(output_path):
             try:
-                resize_clip(input_path, output_path, size=size, logger=None)
-            except:
+                resize_clip(input_path, output_path, size=size)
+            except Exception as e:
                 print("\nFailed: %s" % (output_path))
+                print("Error: ", e)
                 with open(os.path.join(output_dir, "failed_clips.txt"), "a") as txt:
                     txt.write(output_path + "\n")
     print("\n")
@@ -52,13 +64,15 @@ def makedirs(dir1, dir2):
 
 
 def resize_multiple_clips(input_dir, output_dir, size=256, workers=1):
-
     print("\n=========== Starting resizing ===========\n")
-
     start = time()
 
     subdirs = makedirs(input_dir, output_dir)
     tot_dirs = len(subdirs)
+
+    classes = list(sorted(list_dir(input_dir)))
+    class_to_idx = {classes[i]: i for i in range(len(classes))}
+    extensions = ('mp4',)
 
     if workers > 1:
         n_workers = workers if tot_dirs > workers else tot_dirs
@@ -80,12 +94,10 @@ def resize_multiple_clips(input_dir, output_dir, size=256, workers=1):
 
 if __name__ == "__main__":
     # input_path is the path to the folder containing the subfolders (applauding, jogging, ...) with the clips
-    input_path = "C:/Users/paolo/dev/data_science/th_proj/kinetics/train/"
-    # input_path = /data_volume/kinetics-downloader/dataset/train/
+    input_path = "/data_volume/kinetics-downloader/dataset/train/"
     # the output_path is the path to the output folder where the new subfolders will be stored
     # if the output folder doesn't exists it will be automatically created with all the parent folders
-    output_path = "C:/Users/paolo/dev/data_science/th_proj/kinetics/train_256/"
-    # output_path = "/data_volume/kinetics-downloader/dataset/train_256/"
+    output_path = "/data_volume/sapienza-video-contrastive/kinetics/train_256/"
 
     Path(output_path).mkdir(parents=True, exist_ok=True)
 
