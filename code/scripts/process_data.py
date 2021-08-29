@@ -6,20 +6,32 @@ from datetime import timedelta
 from pathlib import Path
 from time import time
 
+import moviepy.editor as mp
 import torch
+import cv2
 from fast_slic import Slic
 from torchvision.datasets.folder import make_dataset
 from torchvision.datasets.utils import list_dir
 from torchvision.datasets.video_utils import VideoClips
 from torchvision.io import read_video, write_video
+from torchvision.transforms import Resize
 from tqdm import tqdm
 from tqdm.auto import tqdm
 from joblib import Parallel, delayed
 
 
+counter = 0
+
+
 def get_args():
     # parse arguments
     parser = argparse.ArgumentParser(description='Dataset processing')
+
+    # task to execute
+    task_group = parser.add_mutually_exclusive_group()
+    task_group.add_argument('--segment', action='store_true')
+    task_group.add_argument('--resize', action='store_true')
+    task_group.add_argument('--check-valid', action='store_true')
 
     # paths
     parser.add_argument(
@@ -30,12 +42,7 @@ def get_args():
 
     parser.add_argument('--workers', default=1, type=int, metavar='N',
                         help='number of data processing workers (default: 1)')
-
-    # task to execute
-    task_group = parser.add_mutually_exclusive_group()
-    task_group.add_argument('--segment', action='store_true')
-    task_group.add_argument('--resize', action='store_true')
-    task_group.add_argument('--check-valid', action='store_true')
+    parser.add_argument('--remove', action='store_true')
 
     args = parser.parse_args()
     return args
@@ -53,16 +60,18 @@ def resize_clip(args, video_path, size=256):
     if os.path.isfile(output_path):
         st_size = Path(video_path).stat().st_size
         if st_size == 0:
-            pass
+            ciao = None
         else:
             return
 
-    size = str(size)+':'+str(size)
-    subprocess.call(
-        ['ffmpeg', '-y',  # '-hwaccel', 'cuda',
-         '-i', video_path, '-vf', 'scale='+size, '-an',
-         '-c:v', 'libopenh264', output_path,
-         '-hide_banner', '-loglevel', 'error'])
+    try:
+        clip = mp.VideoFileClip(video_path, audio=False)
+        clip_resized = clip.resize(newsize=(size, size))
+        clip_resized.write_videofile(output_path, logger=None, threads=10)
+        clip.close()
+    except Exception as e:
+        print(type(e).__name__ + ":", e)
+        args.counter += 1
 
 
 def generate_sp_mask(args, video_path):
@@ -74,13 +83,10 @@ def generate_sp_mask(args, video_path):
         try:
             video = read_video(video_path)  # shape (T, H, W, C)
             fps = video[2]['video_fps']
-        except KeyError as k:
-            print("KeyError:", k)
-            print("Videopath:", video_path)
-
         except Exception as e:
-            print("Cannot read the video:", e)
-            print("Videopath:", video_path)
+            print("Problem with the video: ", video_path)
+            print(type(e).__name__ + ":", e)
+            return
 
         video = video[0].permute(3, 0, 1, 2)  # Shape (C, T  H, W)
 
@@ -100,14 +106,16 @@ def generate_sp_mask(args, video_path):
         write_video(output_path, final_t, fps=fps)
 
 
-def check_valid(video_list):
+def check_valid(video_list, remove=False):
     c = 0
     print("\nStarting process to check video validity...\n")
     for video_path in tqdm(video_list):
         size = Path(video_path).stat().st_size
         if size == 0:
             c += 1
-    print("\n\nThere are %d empty videos.\n\n" % (c))
+            if remove:
+                os.remove(video_path)
+    print("\n\nThere are %d empty videos.\n" % (c))
 
 
 def execute(args):
@@ -127,7 +135,7 @@ def execute(args):
 
     if args.check_valid:
         print("\n========= Starting validity check =========\n")
-        check_valid(video_list)
+        check_valid(video_list, args.remove)
 
     else:
         req = None
@@ -152,6 +160,7 @@ def execute(args):
             Parallel(n_jobs=args.workers, require=req)(delayed(func)(args, path)
                                                        for path in tqdm(video_list))
 
+    print("\n\n Total failed clips: ", args.counter)
     end = time()
     tot_time = str(timedelta(seconds=round(end-start)))
     print("\n=========== Completed in %s ===========\n" % (tot_time))
@@ -159,6 +168,7 @@ def execute(args):
 
 if __name__ == "__main__":
     args = get_args()
+    args.counter = 0
 
     # if the output folder doesn't exists it is automatically created with all the parent folders
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)

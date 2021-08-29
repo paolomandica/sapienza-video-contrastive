@@ -28,11 +28,12 @@ python -W ignore process_data.py --resize \
 ### generate segmentation masks
 python -W ignore process_data.py --segment \
 --input-dir "/data_volume/sapienza-video-contrastive/kinetics/train_256/" \
---output_dir ""/data_volume/sapienza-video-contrastive/kinetics/masks/"" \
+--output-dir "/data_volume/sapienza-video-contrastive/kinetics/masks/" \
 --workers 20
 
 ### check videos validity
 python -W ignore process_data.py --check-valid \
+--input-dir "/data_volume/sapienza-video-contrastive/kinetics/train_256/"
 
 
 ##################### EVALUATION - from ./code
