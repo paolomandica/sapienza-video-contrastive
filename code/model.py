@@ -168,16 +168,16 @@ class CRW(nn.Module):
             img_feat = full_img_feat[:, t, :, :].permute(1, 2, 0) # Shape is: (H, W, C) = (32, 32, 512)
             segments_slic = sp_mask[t, :, :] # Shape is: (h, w) = (256, 256)
 
-
             # Compute mask for each superpixel
             sp_tensor = []
 
-            for sp in np.unique(segments_slic):
+            for sp in torch.unique(segments_slic):
                 # Select specific SP
                 single_sp = (segments_slic == sp) * 1
                 sp_tensor.append(single_sp)
 
-            sp_tensor = np.stack(sp_tensor) # This has shape: (num_sp, h, w) = (~50, 256, 256)
+            sp_tensor = torch.stack(sp_tensor).cpu().numpy() # This has shape: (num_sp, h, w) = (~50, 256, 256)
+
 
             # Compute receptive fields relative to each superpixel mask
             out = skimage.util.view_as_windows(sp_tensor, (sp_tensor.shape[0], int(h / H), int(w / W)), step=int(h / H)).squeeze(0)

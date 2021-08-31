@@ -106,7 +106,7 @@ class Kinetics400(VisionDataset):
 
         if self.transform is not None:
             video = self.transform(video)
-            video_mask = self.transform(video_mask) # Is this right?
+            # video_mask = self.transform(video_mask) Is this right?
 
         return video, video_mask, audio, label
 

@@ -39,15 +39,13 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
         start_time = time.time()
         
         video, sp_mask = batch
-        sp_mask = sp_mask.to(device)
+        sp_mask = sp_mask.permute(0,1,4,2,3)
+        # sp_mask, _ = sp_mask
+        # sp_mask = sp_mask.to(device)
         video, orig = video
         video = video.to(device) # Maybe not needed if we use 
 
         output, loss, diagnostics = model(video, sp_mask)
-
-        print(loss)
-        print(loss.mean())
-        print(loss.mean().item())
 
         # orig = orig.to(device)
         # print("ORIG (BATCH) SHAPE = ", orig.shape)
@@ -170,7 +168,7 @@ def main(args):
         dataset.transform = transform_train
     else:
         dataset = make_dataset(is_train=True)
-        if args.cache_dataset and 'kinetics' in args.data_path.lower():
+        if 'kinetics' in args.data_path.lower(): # args.cache_dataset and 
             print("Saving dataset_train to {}".format(cache_path))
             utils.mkdir(os.path.dirname(cache_path))
             dataset.transform = None
