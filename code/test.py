@@ -172,7 +172,7 @@ def test(loader, model, args):
 
                 # Save Predictions
                 cur_img = imgs_orig[0, t +
-                                    n_context].permute(1, 2, 0).numpy() * 255
+                                    n_context].permute(1, 2, 0).cpu().numpy() * 255
                 _maps = []
 
                 if 'jhmdb' in args.filelist.lower():
