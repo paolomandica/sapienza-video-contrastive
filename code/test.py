@@ -59,8 +59,8 @@ def main(args, vis):
     model.eval()
     model = model.to(args.device)
 
-    accelerator = Accelerator()
-    model, val_loader = accelerator.prepare(model, val_loader)
+    # accelerator = Accelerator()
+    # model, val_loader = accelerator.prepare(model, val_loader)
 
     if not os.path.exists(args.save_path):
         os.makedirs(args.save_path)
