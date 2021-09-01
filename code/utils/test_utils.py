@@ -96,7 +96,7 @@ def dump_predictions(pred, lbl_set, img, prefix):
 
     # Argmax to get the hard label for index
     pred_lbl = np.argmax(pred_dist, axis=-1)
-    pred_lbl = np.array(lbl_set.cpu(), dtype=np.int32)[pred_lbl]      
+    pred_lbl = np.array(lbl_set.cpu(), dtype=np.int32)[pred_lbl]
     img_with_label = np.float32(img) * 0.5 + np.float32(pred_lbl) * 0.5
 
     # Visualize label distribution for object 1 (debugging/analysis)
@@ -212,7 +212,7 @@ def batched_affinity(query, keys, mask, temperature, topk, long_mem, device):
 def infer_downscale(model):
     import pdb
     pdb.set_trace()
-    out = model(torch.zeros(1, 10, 3, 320, 320).to(next(model.parameters()).device), torch.zeros(
-        1, 10, 3, 320, 320).to(next(model.parameters()).device), just_feats=True)
-    scale = out[0].shape[-2:]
+    out = model(torch.zeros(1, 10, 3, 320, 320).to(
+        next(model.parameters()).device), just_feats=True)
+    scale = out[1].shape[-2:]
     return 320 // np.array(scale)
