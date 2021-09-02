@@ -5,7 +5,6 @@ docker run --user "$(id -u):$(id -g)" -it --gpus '"device=0,4"' \
 -v /raid/data/francolu:/data_volume \
 paolomandica/sapienza-video-contrastive
 
-
 ##################### TRAINING - from ./code
 
 path_to_kinetics="/data_volume/sapienza-video-contrastive/kinetics/"
@@ -13,9 +12,29 @@ output_dir="../checkpoints/scratch/"
 model_type="scratch"
 
 python -W ignore train.py --data-path $path_to_kinetics --output-dir $output_dir \
---frame-aug grid --dropout 0.1 --clip-len 4 --temp 0.05 --model-type $model_type \
---workers 20 --batch-size 8 --lr 0.0001 --epochs 1 \
+--frame-aug none --dropout 0.1 --clip-len 4 --temp 0.05 --model-type $model_type \
+--workers 20 --batch-size 48 --lr 0.0003 --epochs 1 \
 --visualize --cache-dataset --data-parallel
+
+# To run with patches set --frame-aug to 'grid'
+
+##################### RESIZING - SEGMENTATION
+
+### resize clips
+python -W ignore process_data.py --resize \
+--input-dir "/data_volume/kinetics-downloader/dataset/train/" \
+--output-dir "/data_volume/sapienza-video-contrastive/kinetics/train_256/" \
+--workers 20
+
+### generate segmentation masks
+python -W ignore process_data.py --segment \
+--input-dir "/data_volume/sapienza-video-contrastive/kinetics/train_256/" \
+--output-dir "/data_volume/sapienza-video-contrastive/kinetics/masks/" \
+--workers 20
+
+### check videos validity
+python -W ignore process_data.py --check-valid \
+--input-dir "/data_volume/sapienza-video-contrastive/kinetics/train_256/"
 
 
 ##################### EVALUATION - from ./code
@@ -24,7 +43,7 @@ vallist="/data_volume/sapienza-video-contrastive/code/eval/davis_vallist.txt"
 model_type="scratch"
 checkpoint="../checkpoints/scratch_4/model_0.pth"
 savepath="../results/scratch_4/"
-outpath="../results/scratch_4_converted/
+outpath="../results/scratch_4_converted/"
 dataset="/data_volume/sapienza-video-contrastive/davis_val/"
 
 python test.py --filelist $vallist --model-type $model_type \

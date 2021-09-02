@@ -6,6 +6,15 @@ from torchvision.datasets.folder import make_dataset
 from torchvision.datasets.vision import VisionDataset
 
 import numpy as np
+import torch
+import pdb
+import os
+
+from fast_slic import Slic
+
+from time import time
+from pathlib import Path
+
 
 class Kinetics400(VisionDataset):
     """
@@ -39,17 +48,18 @@ class Kinetics400(VisionDataset):
         label (int): class of the video clip
     """
 
-    def __init__(self, root, frames_per_clip, step_between_clips=1, frame_rate=None,
-                 extensions=('mp4',), transform=None, cached=None, _precomputed_metadata=None):
+    def __init__(self, root, frames_per_clip, step_between_clips=1, frame_rate=None, extensions=('mp4',), transform=None, cached=None, _precomputed_metadata=None, _precomputed_metadata_mask=None):
         super(Kinetics400, self).__init__(root)
         extensions = extensions
 
         classes = list(sorted(list_dir(root)))
         class_to_idx = {classes[i]: i for i in range(len(classes))}
-        
+
         self.samples = make_dataset(self.root, class_to_idx, extensions, is_valid_file=None)
         self.classes = classes
         video_list = [x[0] for x in self.samples]
+        self.video_list = video_list
+
         self.video_clips = VideoClips(
             video_list,
             frames_per_clip,
@@ -57,7 +67,23 @@ class Kinetics400(VisionDataset):
             frame_rate,
             _precomputed_metadata,
         )
+
+        # Repeat same procedure for masks
+        self.samples_mask = make_dataset(self.root.replace("train_256", "masks"), class_to_idx, extensions, is_valid_file=None)
+        self.classes = classes
+        video_list_mask = [x[0] for x in self.samples_mask]
+        self.video_list_mask = video_list_mask
+
+        self.video_clips_mask = VideoClips(
+            video_list_mask,
+            frames_per_clip,
+            step_between_clips,
+            frame_rate,
+            _precomputed_metadata_mask,
+        )
+
         self.transform = transform
+
 
     def __len__(self):
         return self.video_clips.num_clips()
@@ -67,13 +93,23 @@ class Kinetics400(VisionDataset):
         while not success:
             try:
                 video, audio, info, video_idx = self.video_clips.get_clip(idx)
+
+                video_mask, audio_mask, info_mask, video_idx_mask = self.video_clips_mask.get_clip(idx)
+
                 success = True
-            except:
+            except Exception as e:
                 print('skipped idx', idx)
-                idx = np.random.randint(self.__len__())
+                print("Error: ", e)
+                idx = np.random.randint(self._len_())
 
         label = self.samples[video_idx][1]
+
         if self.transform is not None:
             video = self.transform(video)
+            # video_mask = self.transform(video_mask) Is this right?
 
-        return video, audio, label
+        return video, video_mask, audio, label
+
+
+
+

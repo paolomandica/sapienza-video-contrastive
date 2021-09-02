@@ -121,6 +121,8 @@ def train_args():
                         type=int, help='print frequency')
     parser.add_argument('--output-dir', default='auto',
                         help='path where to save')
+    parser.add_argument('--logs-dir', default='auto',
+                        help='path where to dump logs')
     parser.add_argument('--resume', default='', help='resume from checkpoint')
     parser.add_argument('--partial-reload', default='',
                         help='reload net from checkpoint, ignoring keys that are not in current model')
@@ -201,6 +203,7 @@ def train_args():
                                      str(dt.day), args.name, name)
 
     utils.mkdir(args.output_dir)
+    utils.mkdir(args.logs_dir)
 
     return args
 

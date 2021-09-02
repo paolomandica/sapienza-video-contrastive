@@ -4,12 +4,14 @@ import time
 import sys
 import numpy as np
 import json
+import pdb
 
 import torch
 import torch.utils.data
 from torch.utils.data.dataloader import default_collate
 from torch import nn
 import torchvision
+# from torch.utils.tensorboard import SummaryWriter
 from accelerate import Accelerator
 
 import data
@@ -20,12 +22,9 @@ from torchvision.datasets.samplers.clip_sampler import RandomClipSampler, Unifor
 import utils
 from model import CRW
 
-# don't want wandb logs to sync to the cloud
-# os.environ['WANDB_MODE'] = 'offline'
-
 
 def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, print_freq,
-                    vis=None, checkpoint_fn=None, accelerator=None):
+                    vis=None, checkpoint_fn=None, accelerator=None, log_fn=None, logs_dict=None):
 
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -38,20 +37,32 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
 
     for step, batch in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         start_time = time.time()
+        
+        video, sp_mask = batch
+        sp_mask = sp_mask.permute(0,1,4,2,3)
+        # sp_mask, _ = sp_mask
+        # sp_mask = sp_mask.to(device)
+        video, orig = video
+        video = video.to(device) # Maybe not needed if we use 
 
-        video, orig = batch
-        video = video.to(device)
+        output, loss, diagnostics = model(video, sp_mask)
 
-        output, loss, diagnostics = model(video)
-        loss = loss.mean()
+        # orig = orig.to(device)
+        # print("ORIG (BATCH) SHAPE = ", orig.shape)
+        # output, loss, diagnostics = model(orig)
+        # loss = loss.mean()
 
-        if vis is not None:  # and np.random.random() < 0.01:
+        if vis is not None and np.random.random() < 0.01:
             vis.wandb_init(model)
             vis.log(dict(loss=loss.mean().item()))
             vis.log({k: v.mean().item() for k, v in diagnostics.items()})
 
         if checkpoint_fn is not None and np.random.random() < 0.005:
             checkpoint_fn()
+
+        if logs_dict is not None:
+            logs_dict[epoch] = logs_dict.get(epoch, {})
+            logs_dict[epoch][step] = loss.mean().item()
 
         optimizer.zero_grad()
 
@@ -70,6 +81,8 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
 
     if checkpoint_fn is not None:
         checkpoint_fn()
+    if log_fn is not None:
+        log_fn(logs_dict)
 
 
 def _get_cache_path(filepath):
@@ -82,8 +95,8 @@ def _get_cache_path(filepath):
 
 
 def collate_fn(batch):
-    # remove audio from the batch
-    batch = [d[0] for d in batch]
+    # remove audio and labels from the batch
+    batch = [(d[0], d[1]) for d in batch]
     return default_collate(batch)
 
 
@@ -91,9 +104,9 @@ def main(args):
     print(args)
     print("torch version: ", torch.__version__)
     print("torchvision version: ", torchvision.__version__)
-    gpus_count = torch.cuda.device_count()
-    print('Available CUDA devices: ', gpus_count)
-    print('Current CUDA device: ', torch.cuda.current_device())
+    # gpus_count = torch.cuda.device_count()
+    # print('Available CUDA devices: ', gpus_count)
+    # print('Current CUDA device: ', torch.cuda.current_device())
 
     device = torch.device(args.device)
     torch.backends.cudnn.benchmark = True
@@ -110,7 +123,7 @@ def main(args):
 
     transform_train = utils.augs.get_train_transforms(args)
 
-    def make_dataset(is_train, cached=None):
+    def make_dataset(is_train, cached=None, cached_mask=None):
         _transform = transform_train if is_train else transform_test
 
         if 'kinetics' in args.data_path.lower():
@@ -122,7 +135,8 @@ def main(args):
                 extensions=('mp4'),
                 frame_rate=args.frame_skip,
                 # cached=cached,
-                _precomputed_metadata=cached
+                _precomputed_metadata=cached,
+                _precomputed_metadata_mask=cached_mask
             )
         # HACK assume image dataset if data path is a directory
         elif os.path.isdir(args.data_path):
@@ -145,11 +159,16 @@ def main(args):
         cached = dict(video_paths=dataset.video_clips.video_paths,
                       video_fps=dataset.video_clips.video_fps,
                       video_pts=dataset.video_clips.video_pts)
-        dataset = make_dataset(is_train=True, cached=cached)
+
+        cached_mask = dict(video_paths=dataset.video_clips_mask.video_paths,
+                      video_fps=dataset.video_clips_mask.video_fps,
+                      video_pts=dataset.video_clips_mask.video_pts)
+
+        dataset = make_dataset(is_train=True, cached=cached, cached_mask=cached_mask)
         dataset.transform = transform_train
     else:
         dataset = make_dataset(is_train=True)
-        if args.cache_dataset and 'kinetics' in args.data_path.lower():
+        if 'kinetics' in args.data_path.lower(): # args.cache_dataset and 
             print("Saving dataset_train to {}".format(cache_path))
             utils.mkdir(os.path.dirname(cache_path))
             dataset.transform = None
@@ -165,7 +184,7 @@ def main(args):
     def make_data_sampler(is_train, dataset):
         torch.manual_seed(0)
         if hasattr(dataset, 'video_clips'):
-            _sampler = RandomClipSampler  # UniformClipSampler
+            _sampler = RandomClipSampler # UniformClipSampler  
             return _sampler(dataset.video_clips, args.clips_per_video)
         else:
             return torch.utils.data.sampler.RandomSampler(dataset) if is_train else None
@@ -180,9 +199,12 @@ def main(args):
 
     vis = utils.visualize.Visualize(args) if args.visualize else None
 
+    # tensorboard logs writer
+    # writer = SummaryWriter(log_dir="./logs")
+
     print("Creating model")
     model = CRW(args, vis=vis).to(device)
-    print(model)
+    # print(model)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
@@ -194,10 +216,10 @@ def main(args):
 
     accelerator = None
     if args.data_parallel:
-        model = torch.nn.parallel.DataParallel(model)
-        # accelerator = Accelerator()
-        # model, optimizer, data_loader = accelerator.prepare(
-        #     model, optimizer, data_loader)
+        # model = torch.nn.parallel.DataParallel(model)
+        accelerator = Accelerator()
+        model, optimizer, data_loader = accelerator.prepare(
+            model, optimizer, data_loader)
 
     if args.partial_reload:
         checkpoint = torch.load(args.partial_reload, map_location='cpu')
@@ -227,13 +249,21 @@ def main(args):
                 checkpoint,
                 os.path.join(args.output_dir, 'checkpoint.pth'))
 
+    def save_training_logs(logs_dict):
+        if args.logs_dir:
+            with open(os.path.join(args.logs_dir, 'log.json'), 'w') as fp:
+                json.dump(logs_dict, fp)
+
+    logs = dict()
+
     print("Start training")
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
         train_one_epoch(model, optimizer, lr_scheduler, data_loader,
                         device, epoch, args.print_freq,
                         vis=vis, checkpoint_fn=save_model_checkpoint,
-                        accelerator=accelerator)
+                        accelerator=accelerator, log_fn=save_training_logs,
+                        logs_dict=logs)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))

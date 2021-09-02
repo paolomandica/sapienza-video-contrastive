@@ -8,7 +8,6 @@ ENV USERNAME=francolu
 RUN addgroup --gid $GROUP_ID $USERNAME
 RUN adduser --home /home/$USERNAME --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID $USERNAME
 
-
 # Set the working directory
 WORKDIR /home/$USERNAME
 
@@ -31,7 +30,7 @@ RUN chmod u+rwx -R ./sapienza-video-contrastive/
 
 USER $USERNAME
 
-RUN pip install accelerator -y
+RUN pip install accelerate -y
 
 # RUN dvc pull
 
