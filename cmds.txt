@@ -39,15 +39,22 @@ python -W ignore process_data.py --check-valid \
 
 ##################### EVALUATION - from ./code
 
-python test.py --filelist ./eval/davis_vallist.txt --model-type scratch \
---resume ../checkpoints/model_9.pth --save-path ../results/scratch/ \
+vallist="/data_volume/sapienza-video-contrastive/code/eval/davis_vallist.txt"
+model_type="scratch"
+checkpoint="../checkpoints/scratch_4/model_0.pth"
+savepath="../results/scratch_4/"
+outpath="../results/scratch_4_converted/
+dataset="/data_volume/sapienza-video-contrastive/davis_val/"
+
+python test.py --filelist $vallist --model-type $model_type \
+--resume $checkpoint --save-path $savepath \
 --topk 10 --videoLen 5 --radius 12  --temperature 0.05  --cropSize -1
 
 ### Convert
-python ./eval/convert_davis.py --in_folder ../results/scratch/ \
---out_folder ../convert_results/scratch/ --dataset ../davis_val/
+python ./eval/convert_davis.py --in_folder $savepath \
+--out_folder $outpath --dataset $dataset
 
 ### Compute metrics
 python /data_volume/davis2017-evaluation/evaluation_method.py \
---task semi-supervised  --results_path ../convert_results/scratch/ \
---set val --davis_path ../davis_val/
+--task semi-supervised  --results_path $outpath \
+--set val --davis_path $dataset
