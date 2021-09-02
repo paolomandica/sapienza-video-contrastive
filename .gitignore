@@ -285,6 +285,7 @@ kinetics_sample/*
 kinetics400_partial/*
 /davis_val
 checkpoints/*
+code/wandb/*
 
 
 ### files ###

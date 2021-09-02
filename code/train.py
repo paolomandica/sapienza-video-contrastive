@@ -39,18 +39,13 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
         start_time = time.time()
         
         video, sp_mask = batch
-        sp_mask = sp_mask.to(device)
+        sp_mask = sp_mask.permute(0,1,4,2,3)
+        # sp_mask, _ = sp_mask
+        # sp_mask = sp_mask.to(device)
         video, orig = video
-        video = video.to(device)
-
-        print("VIDEO (BATCH) SHAPE = ", video.shape)
-        print("SP (BATCH) SHAPE = ", sp_mask.shape)
+        video = video.to(device) # Maybe not needed if we use 
 
         output, loss, diagnostics = model(video, sp_mask)
-
-        print(loss)
-        print(loss.mean())
-        print(loss.mean().item())
 
         # orig = orig.to(device)
         # print("ORIG (BATCH) SHAPE = ", orig.shape)
@@ -100,7 +95,7 @@ def _get_cache_path(filepath):
 
 
 def collate_fn(batch):
-    # remove audio from the batch
+    # remove audio and labels from the batch
     batch = [(d[0], d[1]) for d in batch]
     return default_collate(batch)
 
@@ -128,7 +123,7 @@ def main(args):
 
     transform_train = utils.augs.get_train_transforms(args)
 
-    def make_dataset(is_train, cached=None):
+    def make_dataset(is_train, cached=None, cached_mask=None):
         _transform = transform_train if is_train else transform_test
 
         if 'kinetics' in args.data_path.lower():
@@ -140,7 +135,8 @@ def main(args):
                 extensions=('mp4'),
                 frame_rate=args.frame_skip,
                 # cached=cached,
-                _precomputed_metadata=cached
+                _precomputed_metadata=cached,
+                _precomputed_metadata_mask=cached_mask
             )
         # HACK assume image dataset if data path is a directory
         elif os.path.isdir(args.data_path):
@@ -163,11 +159,16 @@ def main(args):
         cached = dict(video_paths=dataset.video_clips.video_paths,
                       video_fps=dataset.video_clips.video_fps,
                       video_pts=dataset.video_clips.video_pts)
-        dataset = make_dataset(is_train=True, cached=cached)
+
+        cached_mask = dict(video_paths=dataset.video_clips_mask.video_paths,
+                      video_fps=dataset.video_clips_mask.video_fps,
+                      video_pts=dataset.video_clips_mask.video_pts)
+
+        dataset = make_dataset(is_train=True, cached=cached, cached_mask=cached_mask)
         dataset.transform = transform_train
     else:
         dataset = make_dataset(is_train=True)
-        if args.cache_dataset and 'kinetics' in args.data_path.lower():
+        if 'kinetics' in args.data_path.lower(): # args.cache_dataset and 
             print("Saving dataset_train to {}".format(cache_path))
             utils.mkdir(os.path.dirname(cache_path))
             dataset.transform = None
@@ -183,7 +184,7 @@ def main(args):
     def make_data_sampler(is_train, dataset):
         torch.manual_seed(0)
         if hasattr(dataset, 'video_clips'):
-            _sampler = UniformClipSampler  # RandomClipSampler
+            _sampler = RandomClipSampler # UniformClipSampler  
             return _sampler(dataset.video_clips, args.clips_per_video)
         else:
             return torch.utils.data.sampler.RandomSampler(dataset) if is_train else None
@@ -203,7 +204,7 @@ def main(args):
 
     print("Creating model")
     model = CRW(args, vis=vis).to(device)
-    print(model)
+    # print(model)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
