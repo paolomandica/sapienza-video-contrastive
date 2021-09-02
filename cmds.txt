@@ -8,12 +8,12 @@ paolomandica/sapienza-video-contrastive
 ##################### TRAINING - from ./code
 
 path_to_kinetics="/data_volume/sapienza-video-contrastive/kinetics/"
-output_dir="../checkpoints/scratch/"
+output_dir="../checkpoints/scratch_new_10/"
 model_type="scratch"
 
 python -W ignore train.py --data-path $path_to_kinetics --output-dir $output_dir \
---frame-aug none --dropout 0.1 --clip-len 4 --temp 0.05 --model-type $model_type \
---workers 20 --batch-size 48 --lr 0.0003 --epochs 1 \
+--frame-aug none --dropout 0.1 --clip-len 10 --temp 0.05 --model-type $model_type \
+--workers 20 --batch-size 32 --lr 0.0003 --epochs 10 \
 --visualize --cache-dataset --data-parallel
 
 # To run with patches set --frame-aug to 'grid'

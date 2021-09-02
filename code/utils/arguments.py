@@ -206,39 +206,3 @@ def train_args():
     utils.mkdir(args.logs_dir)
 
     return args
-
-
-def get_args():
-    # data_path = '/content/drive/MyDrive/th_project/videowalk/code/data/kinetics'
-    data_path = "/content/drive/MyDrive/th_project/kinetics400_partial/"
-
-    model_type = 'r3d_18'      # scratch - r3d_18
-    batch_size = 6     # 20
-    epochs = 10      # 25
-    clip_len = 4        # 4
-    clips_per_video = 5     # 5
-    dropout = 0.1       # 0.1
-    lr = 0.0001     # 0.0001
-    workers = 16        # 16
-    # 'checkpoints/_drop0.1-len4-ftranscrop-fauggrid-optimadam-temp0.05-fdrop0.0-lr0.0001-mlp0/'
-    output_dir = "checkpoints/resnet_3d_18/"
-    # '4-19-_drop0.1-len4-ftranscrop-fauggrid-optimadam-temp0.05-fdrop0.0-lr0.0001-mlp0',
-    name = '4-19-_drop0.1-len4-ftranscrop-fauggrid-optimadam-temp0.05-fdrop0.0-lr0.0001-mlp0'
-
-    args = Namespace(batch_size=batch_size, cache_dataset=True,
-                     clip_len=clip_len, clips_per_video=clips_per_video,
-                     data_parallel=True, data_path=data_path,
-                     device='cuda', dropout=dropout, epochs=25,
-                     fast_test=False, featdrop=0.0, flip=False,
-                     frame_aug='grid', frame_skip=8, frame_transforms='crop',
-                     head_depth=0, img_size=256, lr=lr, lr_gamma=0.3,
-                     lr_milestones=[20, 30, 40], lr_warmup_epochs=0,
-                     model_type=model_type, momentum=0.9,
-                     name=name,
-                     optim='adam', output_dir=output_dir,
-                     partial_reload='', patch_size=[64, 64, 3], port=8095,
-                     print_freq=10, remove_layers=[], restrict=-1, resume='',
-                     server='localhost', sk_align=False, sk_targets=False,
-                     start_epoch=0, steps_per_epoch=10000000000.0, temp=0.05,
-                     visualize=False, weight_decay=0.0001, workers=workers, zero_diagonal=False)
-    return args
