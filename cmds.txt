@@ -48,7 +48,7 @@ dataset="/data_volume/sapienza-video-contrastive/davis_val/"
 
 python test.py --filelist $vallist --model-type $model_type \
 --resume $checkpoint --save-path $savepath \
---topk 10 --videoLen 5 --radius 12  --temperature 0.05  --cropSize -1
+--topk 10 --videoLen 20 --radius 12  --temperature 0.05  --cropSize -1
 
 ### Convert
 python ./eval/convert_davis.py --in_folder $savepath \
