@@ -4,13 +4,13 @@ import time
 import sys
 import numpy as np
 import json
+import pdb
 
 import torch
 import torch.utils.data
 from torch.utils.data.dataloader import default_collate
 from torch import nn
 import torchvision
-from accelerate import Accelerator
 
 import data
 from data.kinetics import Kinetics400
@@ -25,7 +25,7 @@ from model import CRW
 
 
 def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, print_freq,
-                    vis=None, checkpoint_fn=None, accelerator=None):
+                    vis=None, checkpoint_fn=None):
 
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -39,10 +39,14 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
     for step, batch in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         start_time = time.time()
 
-        video, orig = batch
-        video = video.to(device)
+        video, sp_mask = batch
+        sp_mask = sp_mask.permute(0, 1, 4, 2, 3)
+        # sp_mask, _ = sp_mask
+        # sp_mask = sp_mask.to(device)
+        video, orig = video
+        video = video.to(device)  # Maybe not needed if we use
 
-        output, loss, diagnostics = model(video)
+        output, loss, diagnostics = model(video, sp_mask)
         loss = loss.mean()
 
         if vis is not None:  # and np.random.random() < 0.01:
@@ -54,11 +58,7 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
             checkpoint_fn()
 
         optimizer.zero_grad()
-
-        if accelerator:
-            accelerator.backward(loss)
-        else:
-            loss.backward()
+        loss.backward()
         # print(torch.nn.utils.clip_grad_norm_(model.parameters(), 1), 'grad norm')
         optimizer.step()
 
@@ -82,8 +82,8 @@ def _get_cache_path(filepath):
 
 
 def collate_fn(batch):
-    # remove audio from the batch
-    batch = [d[0] for d in batch]
+    # remove audio and labels from the batch
+    batch = [(d[0], d[1]) for d in batch]
     return default_collate(batch)
 
 
@@ -91,9 +91,9 @@ def main(args):
     print(args)
     print("torch version: ", torch.__version__)
     print("torchvision version: ", torchvision.__version__)
-    gpus_count = torch.cuda.device_count()
-    print('Available CUDA devices: ', gpus_count)
-    print('Current CUDA device: ', torch.cuda.current_device())
+    # gpus_count = torch.cuda.device_count()
+    # print('Available CUDA devices: ', gpus_count)
+    # print('Current CUDA device: ', torch.cuda.current_device())
 
     device = torch.device(args.device)
     torch.backends.cudnn.benchmark = True
@@ -104,13 +104,13 @@ def main(args):
     valdir = os.path.join(args.data_path, 'val_256')
 
     st = time.time()
-    cache_path = _get_cache_path(traindir)
+    # cache_path = _get_cache_path(traindir)
     # fixed cache path for docker
-    # cache_path = "./0c870b8733.pt"
+    cache_path = "/data_volume/sapienza-video-contrastive/cached_data/cached_data_10.pt"
 
     transform_train = utils.augs.get_train_transforms(args)
 
-    def make_dataset(is_train, cached=None):
+    def make_dataset(is_train, cached=None, cached_mask=None):
         _transform = transform_train if is_train else transform_test
 
         if 'kinetics' in args.data_path.lower():
@@ -122,7 +122,8 @@ def main(args):
                 extensions=('mp4'),
                 frame_rate=args.frame_skip,
                 # cached=cached,
-                _precomputed_metadata=cached
+                _precomputed_metadata=cached,
+                _precomputed_metadata_mask=cached_mask
             )
         # HACK assume image dataset if data path is a directory
         elif os.path.isdir(args.data_path):
@@ -145,11 +146,17 @@ def main(args):
         cached = dict(video_paths=dataset.video_clips.video_paths,
                       video_fps=dataset.video_clips.video_fps,
                       video_pts=dataset.video_clips.video_pts)
-        dataset = make_dataset(is_train=True, cached=cached)
+
+        cached_mask = dict(video_paths=dataset.video_clips_mask.video_paths,
+                           video_fps=dataset.video_clips_mask.video_fps,
+                           video_pts=dataset.video_clips_mask.video_pts)
+
+        dataset = make_dataset(
+            is_train=True, cached=cached, cached_mask=cached_mask)
         dataset.transform = transform_train
     else:
         dataset = make_dataset(is_train=True)
-        if args.cache_dataset and 'kinetics' in args.data_path.lower():
+        if 'kinetics' in args.data_path.lower():  # args.cache_dataset and
             print("Saving dataset_train to {}".format(cache_path))
             utils.mkdir(os.path.dirname(cache_path))
             dataset.transform = None
@@ -182,7 +189,7 @@ def main(args):
 
     print("Creating model")
     model = CRW(args, vis=vis).to(device)
-    print(model)
+    # print(model)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
@@ -195,9 +202,7 @@ def main(args):
     accelerator = None
     if args.data_parallel:
         model = torch.nn.parallel.DataParallel(model)
-        # accelerator = Accelerator()
-        # model, optimizer, data_loader = accelerator.prepare(
-        #     model, optimizer, data_loader)
+        model_without_ddp = model.module
 
     if args.partial_reload:
         checkpoint = torch.load(args.partial_reload, map_location='cpu')
@@ -232,8 +237,7 @@ def main(args):
     for epoch in range(args.start_epoch, args.epochs):
         train_one_epoch(model, optimizer, lr_scheduler, data_loader,
                         device, epoch, args.print_freq,
-                        vis=vis, checkpoint_fn=save_model_checkpoint,
-                        accelerator=accelerator)
+                        vis=vis, checkpoint_fn=save_model_checkpoint)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
@@ -242,5 +246,4 @@ def main(args):
 
 if __name__ == "__main__":
     args = utils.arguments.train_args()
-    # args = utils.arguments.get_args()
     main(args)

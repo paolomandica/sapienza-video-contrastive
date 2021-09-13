@@ -59,9 +59,6 @@ def main(args, vis):
     model.eval()
     model = model.to(args.device)
 
-    # accelerator = Accelerator()
-    # model, val_loader = accelerator.prepare(model, val_loader)
-
     if not os.path.exists(args.save_path):
         os.makedirs(args.save_path)
 
@@ -106,8 +103,6 @@ def test(loader, model, args):
                     pf = torch.nn.functional.interpolate(
                         pf[::10], scale_factor=(4, 4), mode='bilinear')
                     vis.images(pf, nrow=2, env='main_pca')
-                    import pdb
-                    pdb.set_trace()
 
             ##################################################################
             # Compute affinities
