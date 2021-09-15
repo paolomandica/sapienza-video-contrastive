@@ -95,6 +95,10 @@ def generate_sp_mask(args, video_path):
         except Exception as e:
             print("Problem with the video: ", video_path)
             print(type(e).__name__ + ":", e)
+            os.remove(video_path)
+            if not os.path.exists(video_path):
+                print("Video removed")
+                print()
             return
 
         video = video[0].permute(3, 0, 1, 2)  # Shape (C, T  H, W)

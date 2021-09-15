@@ -30,7 +30,7 @@ python -W ignore process_data.py --resize \
 ### generate segmentation masks
 python -W ignore process_data.py --segment \
 --input-dir "/data_volume/sapienza-video-contrastive/kinetics/train_256/" \
---output-dir "/data_volume/sapienza-video-contrastive/kinetics/masks_lsc_500_05/" \
+--output-dir "/data_volume/sapienza-video-contrastive/kinetics/masks_slic_10_30/" \
 --workers 20
 
 ### check videos validity

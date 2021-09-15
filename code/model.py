@@ -269,11 +269,12 @@ class CRW(nn.Module):
         # Image/Pixels to Nodes
         #################################################################
 
+        q = None
         if masks is not None:
             # use pre-computed superpixels masks
             q = masks
             mm = None
-        elif masks is None and self.args.frame_aug is None:
+        elif masks is None and self.args.frame_aug == "none":
             # compute superpixels masks if not loaded
             q, mm = self.image_to_nodes(x, sp_mask)
         elif self.args.frame_aug == "grid":
@@ -282,6 +283,7 @@ class CRW(nn.Module):
             x = x.transpose(1, 2).view(B, _N, C, T, H, W)
             q, mm = self.pixels_to_nodes(x)
 
+        assert q is not None
         q = q.permute(0, 3, 1, 2)
         B, C, T, N = q.shape
 
