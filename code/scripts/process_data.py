@@ -2,13 +2,18 @@ import os
 import pdb
 import argparse
 import subprocess
+
 from datetime import timedelta
 from pathlib import Path
 from time import time
+from functools import partial
+from multiprocessing import Pool
 
 import moviepy.editor as mp
 import torch
 import cv2
+import numpy as np
+
 from fast_slic import Slic
 from torchvision.datasets.folder import make_dataset
 from torchvision.datasets.utils import list_dir
@@ -17,7 +22,10 @@ from torchvision.io import read_video, write_video
 from torchvision.transforms import Resize
 from tqdm import tqdm
 from tqdm.auto import tqdm
-from joblib import Parallel, delayed
+from tqdm.contrib.concurrent import process_map
+from joblib import Parallel, delayed, parallel_backend
+from skimage.segmentation import felzenszwalb, quickshift
+from cv2.ximgproc import createSuperpixelSEEDS, createSuperpixelLSC
 
 
 counter = 0
@@ -75,13 +83,14 @@ def resize_clip(args, video_path, size=256):
 
 
 def generate_sp_mask(args, video_path):
-    output_path = video_path.replace("train_256", "masks")
+    output_path = video_path.replace(args.input_dir, args.output_dir)
 
     if os.path.isfile(output_path):
         return
     else:
         try:
-            video = read_video(video_path)  # shape (T, H, W, C)
+            # shape (T, H, W, C)
+            video = read_video(video_path, pts_unit='sec')
             fps = video[2]['video_fps']
         except Exception as e:
             print("Problem with the video: ", video_path)
@@ -90,20 +99,25 @@ def generate_sp_mask(args, video_path):
 
         video = video[0].permute(3, 0, 1, 2)  # Shape (C, T  H, W)
 
-        slic = Slic(num_components=50, compactness=30)
+        slic = Slic(num_components=10, compactness=30)
+
         sp_tensor_time = []
 
         for t in range(video.shape[1]):
             img = video[:, t, :, :]
             img = img.permute(1, 2, 0).cpu().numpy()
+            # pdb.set_trace()
             img = img.astype(dtype='uint8', order='C')
-            segments_slic = slic.iterate(img).astype(dtype='uint8')
-            sp_tensor_time.append(torch.from_numpy(segments_slic))
+            segments = slic.iterate(img).astype(dtype='uint8')
+            # lsc = createSuperpixelLSC(img, region_size=300, ratio=0.5)
+            # lsc.iterate()
+            # segments = lsc.getLabels()
+            sp_tensor_time.append(torch.from_numpy(segments))
 
-        # torch.save(torch.stack(sp_tensor_time), output_path)
         final_t = torch.stack(sp_tensor_time)
         final_t = final_t.unsqueeze(3).repeat(1, 1, 1, 3)
         write_video(output_path, final_t, fps=fps)
+        return None
 
 
 def check_valid(video_list, remove=False):
@@ -144,6 +158,7 @@ def execute(args):
         if args.segment:
             print("\n========= Starting segmentation process =========\n")
             func = generate_sp_mask
+            # req = "sharedmem"
         elif args.resize:
             print("\n========= Starting resizing process =========\n")
             func = resize_clip

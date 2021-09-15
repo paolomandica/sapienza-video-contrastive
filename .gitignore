@@ -2,6 +2,20 @@
 # Created by https://www.toptal.com/developers/gitignore/api/vscode,python,jupyternotebooks
 # Edit at https://www.toptal.com/developers/gitignore?templates=vscode,python,jupyternotebooks
 
+### folders ###
+results
+data
+kinetics
+kinetics_sample
+/davis_val
+checkpoints
+code/wandb
+code/auto
+cached_data
+
+### files ###
+*.zip
+
 ### JupyterNotebooks ###
 # gitignore template for Jupyter Notebooks
 # website: http://jupyter.org/
@@ -275,16 +289,3 @@ fabric.properties
 # CodeStream plugin
 # https://plugins.jetbrains.com/plugin/12206-codestream
 .idea/codestream.xml
-
-
-### folders ###
-results/
-data/
-kinetics/*
-kinetics_sample/*
-/davis_val
-checkpoints/*
-code/wandb/*
-
-### files ###
-*.zip

@@ -89,8 +89,10 @@ def test_args():
 def train_args():
     parser = argparse.ArgumentParser(description='Video Walk Training')
 
-    parser.add_argument('--data-path', default='/data/ajabri/kinetics/',
-                        help='/home/ajabri/data/places365_standard/train/ | /data/ajabri/kinetics/')
+    parser.add_argument(
+        '--data-path', default="/data_volume/sapienza-video-contrastive/kinetics/")
+    parser.add_argument('--masks-dir', default="masks",
+                        help="name (not path) of the directory containing the masks")
     parser.add_argument('--device', default='cuda', help='device')
     parser.add_argument('--clip-len', default=8, type=int, metavar='N',
                         help='number of frames per clip')

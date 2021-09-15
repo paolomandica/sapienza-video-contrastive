@@ -106,7 +106,7 @@ def main(args):
     st = time.time()
     # cache_path = _get_cache_path(traindir)
     # fixed cache path for docker
-    cache_path = "/data_volume/sapienza-video-contrastive/cached_data/cached_data_10.pt"
+    cache_path = "/data_volume/sapienza-video-contrastive/cached_data/slic_10_10_30.pt"
 
     transform_train = utils.augs.get_train_transforms(args)
 
@@ -114,6 +114,7 @@ def main(args):
         _transform = transform_train if is_train else transform_test
 
         if 'kinetics' in args.data_path.lower():
+            print("MASKS_DIR = ", args.masks_dir)
             return Kinetics400(
                 traindir if is_train else valdir,
                 frames_per_clip=args.clip_len,
@@ -123,7 +124,8 @@ def main(args):
                 frame_rate=args.frame_skip,
                 # cached=cached,
                 _precomputed_metadata=cached,
-                _precomputed_metadata_mask=cached_mask
+                _precomputed_metadata_mask=cached_mask,
+                masks_dir=args.masks_dir
             )
         # HACK assume image dataset if data path is a directory
         elif os.path.isdir(args.data_path):

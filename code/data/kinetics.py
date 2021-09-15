@@ -48,14 +48,17 @@ class Kinetics400(VisionDataset):
         label (int): class of the video clip
     """
 
-    def __init__(self, root, frames_per_clip, step_between_clips=1, frame_rate=None, extensions=('mp4',), transform=None, cached=None, _precomputed_metadata=None, _precomputed_metadata_mask=None):
+    def __init__(self, root, frames_per_clip, step_between_clips=1, frame_rate=None,
+                 extensions=('mp4',), transform=None, cached=None, masks_dir=None,
+                 _precomputed_metadata=None, _precomputed_metadata_mask=None):
         super(Kinetics400, self).__init__(root)
         extensions = extensions
 
         classes = list(sorted(list_dir(root)))
         class_to_idx = {classes[i]: i for i in range(len(classes))}
 
-        self.samples = make_dataset(self.root, class_to_idx, extensions, is_valid_file=None)
+        self.samples = make_dataset(
+            self.root, class_to_idx, extensions, is_valid_file=None)
         self.classes = classes
         video_list = [x[0] for x in self.samples]
         self.video_list = video_list
@@ -69,7 +72,8 @@ class Kinetics400(VisionDataset):
         )
 
         # Repeat same procedure for masks
-        self.samples_mask = make_dataset(self.root.replace("train_256", "masks"), class_to_idx, extensions, is_valid_file=None)
+        self.samples_mask = make_dataset(self.root.replace(
+            "train_256", masks_dir), class_to_idx, extensions, is_valid_file=None)
         self.classes = classes
         video_list_mask = [x[0] for x in self.samples_mask]
         self.video_list_mask = video_list_mask
@@ -84,7 +88,6 @@ class Kinetics400(VisionDataset):
 
         self.transform = transform
 
-
     def __len__(self):
         return self.video_clips.num_clips()
 
@@ -94,7 +97,8 @@ class Kinetics400(VisionDataset):
             try:
                 video, audio, info, video_idx = self.video_clips.get_clip(idx)
 
-                video_mask, audio_mask, info_mask, video_idx_mask = self.video_clips_mask.get_clip(idx)
+                video_mask, audio_mask, info_mask, video_idx_mask = self.video_clips_mask.get_clip(
+                    idx)
 
                 success = True
             except Exception as e:
@@ -109,7 +113,3 @@ class Kinetics400(VisionDataset):
             # video_mask = self.transform(video_mask) Is this right?
 
         return video, video_mask, audio, label
-
-
-
-

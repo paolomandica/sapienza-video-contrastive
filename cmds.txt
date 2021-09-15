@@ -8,13 +8,14 @@ paolomandica/sapienza-video-contrastive
 ##################### TRAINING - from ./code
 
 path_to_kinetics="/data_volume/sapienza-video-contrastive/kinetics/"
-output_dir="../checkpoints/scratch_new_10/"
+output_dir="../checkpoints/scratch_slic_10_10_30/"
 model_type="scratch"
+masks_dir="masks_slic_10_30"
 
 python -W ignore train.py --data-path $path_to_kinetics --output-dir $output_dir \
 --frame-aug none --dropout 0.1 --clip-len 10 --temp 0.05 --model-type $model_type \
 --workers 20 --batch-size 32 --lr 0.0003 --epochs 10 \
---visualize --cache-dataset --data-parallel
+--visualize --cache-dataset --data-parallel --masks-dir $masks_dir
 
 # To run with patches set --frame-aug to 'grid'
 
@@ -29,7 +30,7 @@ python -W ignore process_data.py --resize \
 ### generate segmentation masks
 python -W ignore process_data.py --segment \
 --input-dir "/data_volume/sapienza-video-contrastive/kinetics/train_256/" \
---output-dir "/data_volume/sapienza-video-contrastive/kinetics/masks/" \
+--output-dir "/data_volume/sapienza-video-contrastive/kinetics/masks_lsc_500_05/" \
 --workers 20
 
 ### check videos validity
@@ -41,9 +42,9 @@ python -W ignore process_data.py --check-valid \
 
 vallist="/data_volume/sapienza-video-contrastive/code/eval/davis_vallist.txt"
 model_type="scratch"
-checkpoint="../checkpoints/scratch_4/model_0.pth"
-savepath="../results/scratch_4/"
-outpath="../results/scratch_4_converted/"
+checkpoint="../checkpoints/scratch_10/model_9.pth"
+savepath="../results/scratch_10/"
+outpath="../results/scratch_10_converted/"
 dataset="/data_volume/sapienza-video-contrastive/davis_val/"
 
 python test.py --filelist $vallist --model-type $model_type \

@@ -226,15 +226,15 @@ class CRW(nn.Module):
         ff_list = []
         seg_list = []
 
-        max_sp_num = 0
+        max_sp_num = 10
 
         for b in range(B):
             ff, seg = self.extract_sp_feat(
                 x[b], maps[b], sp_mask[b, :, 0, :, :])
 
-            temp_max_sp_num = max([y.shape[0] for y in ff])
-            if temp_max_sp_num > max_sp_num:
-                max_sp_num = temp_max_sp_num
+            # temp_max_sp_num = max([y.shape[0] for y in ff])
+            # if temp_max_sp_num > max_sp_num:
+            #     max_sp_num = temp_max_sp_num
 
             ff_list.append(ff)
             seg_list.append(seg)
@@ -247,10 +247,8 @@ class CRW(nn.Module):
                 (0, max_sp_num, 512), requires_grad=True, device='cuda')
 
             for sp_feats in ff:
-                temp_sp_feats = nn.functional.pad(sp_feats,
-                                                  pad=(
-                                                      0, 0, 0, max_sp_num - sp_feats.shape[0]),
-                                                  mode="constant").unsqueeze(0)
+                temp_sp_feats = nn.functional.pad(sp_feats, pad=(
+                    0, 0, 0, max_sp_num - sp_feats.shape[0]), mode="constant").unsqueeze(0)
                 ff_time_tensor = torch.cat(
                     (ff_time_tensor, temp_sp_feats), dim=0)
 
