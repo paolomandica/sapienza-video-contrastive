@@ -9,8 +9,10 @@ import numpy as np
 import torch
 import pdb
 import os
+import random
 
 from fast_slic import Slic
+from skimage.segmentation import felzenszwalb
 
 from time import time
 from pathlib import Path
@@ -49,8 +51,7 @@ class Kinetics400(VisionDataset):
     """
 
     def __init__(self, root, frames_per_clip, step_between_clips=1, frame_rate=None,
-                 extensions=('mp4',), transform=None, cached=None, masks_dir=None,
-                 _precomputed_metadata=None, _precomputed_metadata_mask=None):
+                 extensions=('mp4',), transform=None, cached=None, _precomputed_metadata=None):
         super(Kinetics400, self).__init__(root)
         extensions = extensions
 
@@ -71,21 +72,6 @@ class Kinetics400(VisionDataset):
             _precomputed_metadata,
         )
 
-        # Repeat same procedure for masks
-        self.samples_mask = make_dataset(self.root.replace(
-            "train_256", masks_dir), class_to_idx, extensions, is_valid_file=None)
-        self.classes = classes
-        video_list_mask = [x[0] for x in self.samples_mask]
-        self.video_list_mask = video_list_mask
-
-        self.video_clips_mask = VideoClips(
-            video_list_mask,
-            frames_per_clip,
-            step_between_clips,
-            frame_rate,
-            _precomputed_metadata_mask,
-        )
-
         self.transform = transform
 
     def __len__(self):
@@ -96,20 +82,54 @@ class Kinetics400(VisionDataset):
         while not success:
             try:
                 video, audio, info, video_idx = self.video_clips.get_clip(idx)
-
-                video_mask, audio_mask, info_mask, video_idx_mask = self.video_clips_mask.get_clip(
-                    idx)
-
                 success = True
             except Exception as e:
                 print('skipped idx', idx)
                 print("Error: ", e)
-                idx = np.random.randint(self._len_())
+                idx = np.random.randint(self.__len__())
 
         label = self.samples[video_idx][1]
 
-        if self.transform is not None:
-            video = self.transform(video)
-            # video_mask = self.transform(video_mask) Is this right?
+        # if self.transform is not None:
+        video = self.transform(video)
+        # print("******* VIDEO.SHAPE = ", video[0].shape)
+
+        def compute_sp_slic(img):
+            slic = Slic(num_components=10, compactness=30)
+            img = img.astype(dtype='uint8', order='C')
+            seg = slic.iterate(img).astype(dtype='uint8')
+            return seg
+
+        def compute_sp_FH(img):
+            seg = felzenszwalb(img, scale=5000, sigma=0.5, min_size=1000)
+            return seg
+
+        def compute_mask(video):
+            sp_tensor_time = []
+
+            # select random method for SP computation
+            # methods = ['slic', 'fh']
+            # rnd_method = random.choice(methods)
+            # if rnd_method == 'slic':
+            #     compute_sp = compute_sp_slic
+            # elif rnd_method == 'fh':
+            #     compute_sp = compute_sp_FH
+            compute_sp = compute_sp_FH
+
+            for t in range(video.shape[0]):
+                img = video[t, :, :, :]
+                img = img.permute(1, 2, 0).cpu().numpy()
+                segments = compute_sp(img)
+                sp_tensor_time.append(torch.from_numpy(segments))
+
+            mask = torch.stack(sp_tensor_time)
+            mask = mask.unsqueeze(3).repeat(1, 1, 1, 3)
+            mask = mask.permute(0, 3, 1, 2)
+
+            return mask.numpy()
+
+        # compute mask
+        video_mask = compute_mask(torch.Tensor(video[0]))
+        # print("******* MASK.SHAPE = ", video_mask.shape)
 
         return video, video_mask, audio, label

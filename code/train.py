@@ -40,13 +40,13 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
         start_time = time.time()
 
         video, sp_mask = batch
-        sp_mask = sp_mask.permute(0, 1, 4, 2, 3)
-        # sp_mask, _ = sp_mask
-        # sp_mask = sp_mask.to(device)
         video, orig = video
         video = video.to(device)  # Maybe not needed if we use
+        sp_mask = sp_mask.to(device)
 
-        output, loss, diagnostics = model(video, sp_mask)
+        max_sp_num = len(torch.unique(sp_mask))
+
+        output, loss, diagnostics = model(video, sp_mask, max_sp_num)
         loss = loss.mean()
 
         if vis is not None:  # and np.random.random() < 0.01:
@@ -99,22 +99,23 @@ def main(args):
     torch.backends.cudnn.benchmark = True
 
     print("Preparing training dataloader")
-    traindir = os.path.join(
-        args.data_path, 'train_256' if not args.fast_test else 'val_256')
+    # traindir = os.path.join(
+    #     args.data_path, 'train_256' if not args.fast_test else 'val_256')
+    traindir = args.data_path
     valdir = os.path.join(args.data_path, 'val_256')
 
     st = time.time()
     # cache_path = _get_cache_path(traindir)
     # fixed cache path for docker
-    cache_path = "/data_volume/sapienza-video-contrastive/cached_data/slic_10_10_30.pt"
+    # cache_path = "/data_volume/sapienza-video-contrastive/cached_data/cached_sample.pt"
+    cache_path = args.cache_path
 
     transform_train = utils.augs.get_train_transforms(args)
 
-    def make_dataset(is_train, cached=None, cached_mask=None):
+    def make_dataset(is_train, cached=None):
         _transform = transform_train if is_train else transform_test
 
         if 'kinetics' in args.data_path.lower():
-            print("MASKS_DIR = ", args.masks_dir)
             return Kinetics400(
                 traindir if is_train else valdir,
                 frames_per_clip=args.clip_len,
@@ -123,9 +124,7 @@ def main(args):
                 extensions=('mp4'),
                 frame_rate=args.frame_skip,
                 # cached=cached,
-                _precomputed_metadata=cached,
-                _precomputed_metadata_mask=cached_mask,
-                masks_dir=args.masks_dir
+                _precomputed_metadata=cached
             )
         # HACK assume image dataset if data path is a directory
         elif os.path.isdir(args.data_path):
@@ -149,12 +148,8 @@ def main(args):
                       video_fps=dataset.video_clips.video_fps,
                       video_pts=dataset.video_clips.video_pts)
 
-        cached_mask = dict(video_paths=dataset.video_clips_mask.video_paths,
-                           video_fps=dataset.video_clips_mask.video_fps,
-                           video_pts=dataset.video_clips_mask.video_pts)
-
         dataset = make_dataset(
-            is_train=True, cached=cached, cached_mask=cached_mask)
+            is_train=True, cached=cached)
         dataset.transform = transform_train
     else:
         dataset = make_dataset(is_train=True)

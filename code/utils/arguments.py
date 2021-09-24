@@ -91,8 +91,7 @@ def train_args():
 
     parser.add_argument(
         '--data-path', default="/data_volume/sapienza-video-contrastive/kinetics/")
-    parser.add_argument('--masks-dir', default="masks",
-                        help="name (not path) of the directory containing the masks")
+    parser.add_argument('--cache-path', help="filepath of the cached dataset")
     parser.add_argument('--device', default='cuda', help='device')
     parser.add_argument('--clip-len', default=8, type=int, metavar='N',
                         help='number of frames per clip')

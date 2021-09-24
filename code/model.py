@@ -5,10 +5,8 @@ import numpy as np
 import utils
 import skimage
 
-from skimage.segmentation import slic
 from skimage.util import img_as_float
 import pdb
-from fast_slic import Slic
 
 EPS = 1e-20
 
@@ -142,29 +140,20 @@ class CRW(nn.Module):
         final_feats = []
         final_segment = []
 
-        # slic = Slic(num_components=50, compactness=30)
-
         for t in range(T):
-
-            '''img = full_img[:, t, :, :]
-            img = img.permute(1, 2, 0).cpu().numpy()
-            img = img.astype(dtype='uint8', order='C')
-            segments_slic = slic.iterate(img)
-            final_segment.append(segments_slic)
-            '''
 
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
             img_feat = full_img_feat[:, t, :, :].permute(
                 1, 2, 0)  # Shape is: (H, W, C) = (32, 32, 512)
-            segments_slic = sp_mask[t, :, :]  # Shape is: (h, w) = (256, 256)
+            segments = sp_mask[t, :, :]  # Shape is: (h, w) = (256, 256)
 
             # Compute mask for each superpixel
             sp_tensor = []
 
-            for sp in torch.unique(segments_slic):
+            for sp in torch.unique(segments):
                 # Select specific SP
-                single_sp = (segments_slic == sp) * 1
+                single_sp = (segments == sp) * 1
                 sp_tensor.append(single_sp)
 
             # This has shape: (num_sp, h, w) = (~50, 256, 256)
@@ -202,7 +191,7 @@ class CRW(nn.Module):
 
         return final_feats, final_segment
 
-    def image_to_nodes(self, x, sp_mask):
+    def image_to_nodes(self, x, sp_mask, max_sp_num):
         ''' Inputs:
                 -- 'x' (B x C x T x h x w), batch of images
             Outputs:
@@ -213,28 +202,15 @@ class CRW(nn.Module):
         B, T, c, h, w = x.shape
         x = x.permute(0, 2, 1, 3, 4)  # New shape B, c, T, h, w
         maps = self.encoder(x)
-        # print("MAPS.SHAPE = ", maps.shape)
-
-        # xx = x.contiguous().view(-1, c, h, w).type(torch.cuda.FloatTensor)
-        # m = self.encoder(xx)
-        # maps = m.view(B, T, *m.shape[-3:]).permute(0, 2, 1, 3, 4)
-
-        # L2 Norm
 
         B, C, T, H, W = maps.shape
 
         ff_list = []
         seg_list = []
 
-        max_sp_num = 10
-
         for b in range(B):
             ff, seg = self.extract_sp_feat(
                 x[b], maps[b], sp_mask[b, :, 0, :, :])
-
-            # temp_max_sp_num = max([y.shape[0] for y in ff])
-            # if temp_max_sp_num > max_sp_num:
-            #     max_sp_num = temp_max_sp_num
 
             ff_list.append(ff)
             seg_list.append(seg)
@@ -257,7 +233,7 @@ class CRW(nn.Module):
 
         return ff_tensor, seg_list
 
-    def forward(self, x, sp_mask, just_feats=False, masks=None):
+    def forward(self, x, sp_mask, max_sp_num, just_feats=False):
         '''
         Input is B x T x N*C x H x W, where either
            N>1 -> list of patches of images
@@ -270,18 +246,16 @@ class CRW(nn.Module):
         #################################################################
 
         q = None
-        if masks is not None:
-            # use pre-computed superpixels masks
-            q = masks
-            mm = None
-        elif masks is None and self.args.frame_aug == "none":
-            # compute superpixels masks if not loaded
-            q, mm = self.image_to_nodes(x, sp_mask)
-        elif self.args.frame_aug == "grid":
-            # use patches instead superpixels
+        if self.args.frame_aug == "grid":
+            # use patches
             _N, C = C//3, 3
             x = x.transpose(1, 2).view(B, _N, C, T, H, W)
             q, mm = self.pixels_to_nodes(x)
+        elif self.args.frame_aug == "none":
+            # compute superpixels masks if not loaded
+            q, mm = self.image_to_nodes(x, sp_mask, max_sp_num)
+        else:
+            raise ValueError("args.fram_aug should be 'grid' or 'none'")
 
         assert q is not None
         q = q.permute(0, 3, 1, 2)

@@ -7,17 +7,15 @@ paolomandica/sapienza-video-contrastive
 
 ##################### TRAINING - from ./code
 
-path_to_kinetics="/data_volume/sapienza-video-contrastive/kinetics/"
-output_dir="../checkpoints/scratch_slic_10_10_30/"
+path_to_kinetics="/data_volume/kinetics-downloader/dataset/train_sample/"
+output_dir="../checkpoints/scratch_10_slic_fs/"
 model_type="scratch"
-masks_dir="masks_slic_10_30"
+cache_path="../cached_data/cached_sample.pt"
 
 python -W ignore train.py --data-path $path_to_kinetics --output-dir $output_dir \
---frame-aug none --dropout 0.1 --clip-len 10 --temp 0.05 --model-type $model_type \
---workers 20 --batch-size 32 --lr 0.0003 --epochs 10 \
---visualize --cache-dataset --data-parallel --masks-dir $masks_dir
-
-# To run with patches set --frame-aug to 'grid'
+--frame-aug none --dropout 0.1 --clip-len 4 --temp 0.05 --model-type $model_type \
+--workers 20 --batch-size 40 --lr 0.0003 --epochs 10 \
+--cache-dataset --data-parallel --visualize --cache-path $cache_path
 
 ##################### RESIZING - SEGMENTATION
 

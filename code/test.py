@@ -17,8 +17,6 @@ from data.video import SingleVideoDataset
 import utils
 import utils.test_utils as test_utils
 
-from accelerate import Accelerator
-
 
 def main(args, vis):
     gpus_count = torch.cuda.device_count()
