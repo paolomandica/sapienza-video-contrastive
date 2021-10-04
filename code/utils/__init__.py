@@ -306,7 +306,7 @@ def make_encoder(args):
     elif model_type == 'scratch_zeropad':
         net = resnet.resnet18()
 
-    if model_type == 'scratch50':
+    elif model_type == 'scratch50':
         net = resnet.resnet50()
         net.modify(padding='reflect')
 

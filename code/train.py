@@ -99,9 +99,8 @@ def main(args):
     torch.backends.cudnn.benchmark = True
 
     print("Preparing training dataloader")
-    # traindir = os.path.join(
-    #     args.data_path, 'train_256' if not args.fast_test else 'val_256')
-    traindir = args.data_path
+    traindir = os.path.join(
+        args.data_path, 'train_256' if not args.fast_test else 'val_256')
     valdir = os.path.join(args.data_path, 'val_256')
 
     st = time.time()
