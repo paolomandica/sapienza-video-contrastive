@@ -127,15 +127,15 @@ class CRW(nn.Module):
         # print("FINAL MAPS", maps.shape)
         return feats, maps
 
-    def extract_sp_feat(self, full_img, full_img_feat, sp_mask):
+    def extract_sp_feat(self, img, img_maps, sp_mask):
         '''
-        full_img is in the shape of c, T, h, w
-        full_img_feat is in the shape of C, T, H, W
-        sp_mask is in the shape of T, h, w
+        img has shape of c, T, h, w
+        img_maps has shape of C, T, H, W
+        sp_mask has shape of T, h, w
         '''
 
-        c, T, h, w = full_img.shape
-        C, T, H, W = full_img_feat.shape
+        c, T, h, w = img.shape
+        C, T, H, W = img_maps.shape
 
         final_feats = []
         final_segment = []
@@ -144,7 +144,7 @@ class CRW(nn.Module):
 
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-            img_feat = full_img_feat[:, t, :, :].permute(
+            img_maps = img_maps[:, t, :, :].permute(
                 1, 2, 0)  # Shape is: (H, W, C) = (32, 32, 512)
             segments = sp_mask[t, :, :]  # Shape is: (h, w) = (256, 256)
 
@@ -177,13 +177,13 @@ class CRW(nn.Module):
             # Shape is: (num_windows, num_windows, C, num_sp) = (32,32,512,~50)
             ww_norm_expand = ww_norm.unsqueeze(2).repeat(1, 1, C, 1)
             # Shape is: (num_feat, num_feat, C, num_sp) = (32,32,512,~50)
-            img_feat_expand = img_feat.unsqueeze(-1).repeat(
+            img_maps_expand = img_maps.unsqueeze(-1).repeat(
                 1, 1, 1, ww_norm_expand.shape[-1])
             # Please note num_windows and num_feat are the same.
             # So we repeat weights for each feature channels and feat for each superpixels, because they are independent
 
             # Weighted mean of the features
-            oo = ww_norm_expand * img_feat_expand
+            oo = ww_norm_expand * img_maps_expand
             feats = torch.sum(torch.sum(oo, 0), 0).permute(
                 1, 0)  # Shape is: (~50, 512)
 
@@ -202,8 +202,11 @@ class CRW(nn.Module):
         B, T, c, h, w = x.shape
         x = x.permute(0, 2, 1, 3, 4)  # New shape B, c, T, h, w
         maps = self.encoder(x)
-
         B, C, T, H, W = maps.shape
+        N = max_sp_num
+
+        if self.featdrop_rate > 0:
+            maps = self.featdrop(maps)
 
         ff_list = []
         seg_list = []
@@ -215,12 +218,12 @@ class CRW(nn.Module):
             ff_list.append(ff)
             seg_list.append(seg)
 
-        ff_tensor = torch.empty((0, T, max_sp_num, 512),
+        ff_tensor = torch.empty((0, T, max_sp_num, C),
                                 requires_grad=True, device='cuda')
 
         for ff in ff_list:
             ff_time_tensor = torch.empty(
-                (0, max_sp_num, 512), requires_grad=True, device='cuda')
+                (0, max_sp_num, C), requires_grad=True, device='cuda')
 
             for sp_feats in ff:
                 temp_sp_feats = nn.functional.pad(sp_feats, pad=(
@@ -230,6 +233,14 @@ class CRW(nn.Module):
 
             ff_tensor = torch.cat(
                 (ff_tensor, ff_time_tensor.unsqueeze(0)), dim=0)
+
+        # compute frame embeddings by spatially pooling frame feature maps
+        # shape (B,T,SP,C) -> (B,SP,C,T)
+        ff_tensor = ff_tensor.permute(0, 2, 3, 1)
+        ff_tensor = self.selfsim_fc(
+            ff_tensor.transpose(-1, -2)).transpose(-1, -2)
+        ff_tensor = F.normalize(ff_tensor, p=2, dim=2)
+        ff_tensor = ff_tensor.permute(0, 2, 3, 1)   # B, C, T, SP
 
         return ff_tensor, seg_list
 
@@ -258,7 +269,6 @@ class CRW(nn.Module):
             raise ValueError("args.fram_aug should be 'grid' or 'none'")
 
         assert q is not None
-        q = q.permute(0, 3, 1, 2)
         B, C, T, N = q.shape
 
         if just_feats:

@@ -114,7 +114,7 @@ class Kinetics400(VisionDataset):
             #     compute_sp = compute_sp_slic
             # elif rnd_method == 'fh':
             #     compute_sp = compute_sp_FH
-            compute_sp = compute_sp_FH
+            compute_sp = compute_sp_slic
 
             for t in range(video.shape[0]):
                 img = video[t, :, :, :]

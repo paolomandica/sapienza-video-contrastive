@@ -1,8 +1,8 @@
 ##################### DOCKER
 
-docker run --user "$(id -u):$(id -g)" -it --gpus '"device=0,4"' \
---name "francolu_contrastive" --shm-size 8G \
--v /raid/data/francolu:/data_volume \
+docker run --user "$(id -u):$(id -g)" -it --gpus '"device=3"' \
+--name "francolu_contrastive_vis" --shm-size 8G \
+-v /raid/data/francolu:/data_volume -p 8095:8095 \
 paolomandica/sapienza-video-contrastive
 
 ##################### TRAINING - from ./code
