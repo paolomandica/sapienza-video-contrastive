@@ -40,12 +40,10 @@ class CRW(nn.Module):
         dummy = torch.zeros(1, 3, 1, in_sz, in_sz).to(
             next(self.encoder.parameters()).device)
         dummy_out = self.encoder(dummy)
-        # print("Dummy output ====>", dummy_out.shape)
         self.enc_hid_dim = dummy_out.shape[1]
         self.map_scale = in_sz // dummy_out.shape[-1]
         out = self.encoder(torch.zeros(1, 3, 1, 320, 320).to(
             next(self.encoder.parameters()).device))
-        # print("OUT SHAPE:", out.shape)
         # scale = out[1].shape[-2:]
 
     def make_head(self, depth=1):
@@ -102,9 +100,7 @@ class CRW(nn.Module):
                 -- 'maps'  (B x N x C x T x H x W), node feature maps
         '''
         B, N, C, T, h, w = x.shape
-        # print("X.SHAPE = ", x.shape)
         maps = self.encoder(x.flatten(0, 1))
-        # print("MAPS = ", maps.shape)
         H, W = maps.shape[-2:]
 
         if self.featdrop_rate > 0:
@@ -123,8 +119,6 @@ class CRW(nn.Module):
         feats = feats.view(B, N, feats.shape[1], T).permute(0, 2, 3, 1)
         maps = maps.view(B, N, *maps.shape[1:])
 
-        # print("FINAL FEATS", feats.shape)
-        # print("FINAL MAPS", maps.shape)
         return feats, maps
 
     def extract_sp_feat(self, img, img_maps, sp_mask):
@@ -144,8 +138,9 @@ class CRW(nn.Module):
 
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-            img_maps = img_maps[:, t, :, :].permute(
-                1, 2, 0)  # Shape is: (H, W, C) = (32, 32, 512)
+            img_map = img_maps[:, t, :, :].permute(1, 2, 0)
+            # New shape is: (H, W, C) = (32, 32, 512)
+
             segments = sp_mask[t, :, :]  # Shape is: (h, w) = (256, 256)
 
             # Compute mask for each superpixel
@@ -177,13 +172,13 @@ class CRW(nn.Module):
             # Shape is: (num_windows, num_windows, C, num_sp) = (32,32,512,~50)
             ww_norm_expand = ww_norm.unsqueeze(2).repeat(1, 1, C, 1)
             # Shape is: (num_feat, num_feat, C, num_sp) = (32,32,512,~50)
-            img_maps_expand = img_maps.unsqueeze(-1).repeat(
+            img_map_expand = img_map.unsqueeze(-1).repeat(
                 1, 1, 1, ww_norm_expand.shape[-1])
             # Please note num_windows and num_feat are the same.
             # So we repeat weights for each feature channels and feat for each superpixels, because they are independent
 
             # Weighted mean of the features
-            oo = ww_norm_expand * img_maps_expand
+            oo = ww_norm_expand * img_map_expand
             feats = torch.sum(torch.sum(oo, 0), 0).permute(
                 1, 0)  # Shape is: (~50, 512)
 

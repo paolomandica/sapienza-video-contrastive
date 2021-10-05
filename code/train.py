@@ -204,7 +204,7 @@ def main(args):
         checkpoint = torch.load(args.partial_reload, map_location='cpu')
         utils.partial_load(checkpoint['model'], model_without_ddp)
         optimizer.param_groups[0]["lr"] = args.lr
-        args.start_epoch = checkpoint['epoch'] + 1
+        # args.start_epoch = checkpoint['epoch'] + 1
 
     if args.resume:
         checkpoint = torch.load(args.resume, map_location='cpu')

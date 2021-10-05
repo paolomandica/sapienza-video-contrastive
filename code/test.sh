@@ -1,9 +1,10 @@
 vallist="/data_volume/sapienza-video-contrastive/code/eval/davis_vallist.txt"
 model_type="scratch"
-checkpoint="../checkpoints/scratch_10_slic/checkpoint.pth"
-savepath="../results/scratch_10_slic/"
-outpath="../results/scratch_10_slic_converted/"
-dataset="/data_volume/sapienza-video-contrastive/davis_val/"
+# checkpoint="../checkpoints/scratch_10_slic/checkpoint.pth"
+checkpoint="../pretrained.pth"
+savepath="../results/pretrained/"
+outpath="../results/pretrained_converted/"
+dataset="/data_volume/data/davis_val/"
 
 python test.py --filelist $vallist --model-type $model_type \
 --resume $checkpoint --save-path $savepath \
