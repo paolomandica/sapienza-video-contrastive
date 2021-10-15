@@ -182,6 +182,13 @@ def train_args():
     parser.add_argument('--sk-targets', default=False, action='store_true',
                         help='use sinkhorn-knopp to obtain targets, by taking the argmax')
 
+    parser.add_argument('--sp-method', default='slic', type=str,
+                        help='slic | random')
+    parser.add_argument('--num-sp', default=30, type=int,
+                        help='number of components for SLIC')
+    parser.add_argument('--prob', default=0.5, type=float,
+                        help='sampling probability of sp method')
+
     args = parser.parse_args()
 
     if args.fast_test:
@@ -192,7 +199,8 @@ def train_args():
     if args.output_dir == 'auto':
         keys = {
             'dropout': 'drop', 'clip_len': 'len', 'frame_transforms': 'ftrans', 'frame_aug': 'faug',
-            'optim': 'optim', 'temp': 'temp', 'featdrop': 'fdrop', 'lr': 'lr', 'head_depth': 'mlp'
+            'optim': 'optim', 'temp': 'temp', 'featdrop': 'fdrop', 'lr': 'lr', 'head_depth': 'mlp',
+            'sp_method': 'sp', 'num_sp': 'nsp', 'prob': 'p'
         }
         name = '-'.join(["%s%s" % (keys[k], getattr(args, k) if not isinstance(getattr(
             args, k), list) else '-'.join([str(s) for s in getattr(args, k)])) for k in keys])

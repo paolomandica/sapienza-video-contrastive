@@ -13,9 +13,11 @@ import random
 
 from fast_slic import Slic
 from skimage.segmentation import felzenszwalb
+from cv2.ximgproc import createSuperpixelLSC
 
 from time import time
 from pathlib import Path
+from functools import partial
 
 
 class Kinetics400(VisionDataset):
@@ -51,7 +53,8 @@ class Kinetics400(VisionDataset):
     """
 
     def __init__(self, root, frames_per_clip, step_between_clips=1, frame_rate=None,
-                 extensions=('mp4',), transform=None, cached=None, _precomputed_metadata=None):
+                 extensions=('mp4',), transform=None, cached=None, _precomputed_metadata=None,
+                 sp_method=None, num_components=10, prob=None):
         super(Kinetics400, self).__init__(root)
         extensions = extensions
 
@@ -73,6 +76,9 @@ class Kinetics400(VisionDataset):
         )
 
         self.transform = transform
+        self.sp_method = sp_method
+        self.num_components = num_components
+        self.prob = prob
 
     def __len__(self):
         return self.video_clips.num_clips()
@@ -90,36 +96,42 @@ class Kinetics400(VisionDataset):
 
         label = self.samples[video_idx][1]
 
-        # if self.transform is not None:
-        video = self.transform(video)
-        # print("******* VIDEO.SHAPE = ", video[0].shape)
+        if self.transform is not None:
+            video = self.transform(video)
 
-        def compute_sp_slic(img):
-            slic = Slic(num_components=10, compactness=30)
+        def compute_sp_slic(img, num_components):
+            slic = Slic(num_components=num_components, compactness=30)
             img = img.astype(dtype='uint8', order='C')
             seg = slic.iterate(img).astype(dtype='uint8')
             return seg
 
         def compute_sp_FH(img):
-            seg = felzenszwalb(img, scale=5000, sigma=0.5, min_size=1000)
+            seg = felzenszwalb(img, scale=600, sigma=0.5, min_size=400)
             return seg
 
-        def compute_mask(video):
+        def compute_sp_LSC(img):
+            lsc = createSuperpixelLSC(np.float32(img), region_size=100, ratio=0.5)
+            lsc.iterate()
+            seg = lsc.getLabels()
+            return seg
+
+        def compute_mask(video, sp_method, num_components, p):
             sp_tensor_time = []
 
-            # select random method for SP computation
-            # methods = ['slic', 'fh']
-            # rnd_method = random.choice(methods)
-            # if rnd_method == 'slic':
-            #     compute_sp = compute_sp_slic
-            # elif rnd_method == 'fh':
-            #     compute_sp = compute_sp_FH
-            compute_sp = compute_sp_slic
+            if sp_method == 'random':
+                # select random method for SP computation
+                methods = ['slic', 'fh']
+                method = np.random.choice(methods, 1, p=[p, 1-p])
+            else:
+                method = sp_method
 
             for t in range(video.shape[0]):
                 img = video[t, :, :, :]
                 img = img.permute(1, 2, 0).cpu().numpy()
-                segments = compute_sp(img)
+                if method == 'slic':
+                    segments = compute_sp_slic(img, num_components) 
+                elif method == 'fh':
+                    segments = compute_sp_FH(img)
                 sp_tensor_time.append(torch.from_numpy(segments))
 
             mask = torch.stack(sp_tensor_time)
@@ -129,7 +141,7 @@ class Kinetics400(VisionDataset):
             return mask.numpy()
 
         # compute mask
-        video_mask = compute_mask(torch.Tensor(video[0]))
-        # print("******* MASK.SHAPE = ", video_mask.shape)
+        video_mask = compute_mask(torch.Tensor(video[0]), self.sp_method,
+                                  self.num_components, self.prob)
 
         return video, video_mask, audio, label

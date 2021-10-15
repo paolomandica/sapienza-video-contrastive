@@ -39,9 +39,13 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
     for step, batch in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         start_time = time.time()
 
+        # init wandb
+        if epoch==0 and step==0:
+            vis.wandb_init(model)
+
         video, sp_mask = batch
         video, orig = video
-        video = video.to(device)  # Maybe not needed if we use
+        video = video.to(device)
         sp_mask = sp_mask.to(device)
 
         max_sp_num = len(torch.unique(sp_mask))
@@ -49,8 +53,7 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
         output, loss, diagnostics = model(video, sp_mask, max_sp_num)
         loss = loss.mean()
 
-        if vis is not None:  # and np.random.random() < 0.01:
-            vis.wandb_init(model)
+        if vis is not None and np.random.random() < 0.1:
             vis.log(dict(loss=loss.mean().item()))
             vis.log({k: v.mean().item() for k, v in diagnostics.items()})
 
@@ -91,22 +94,15 @@ def main(args):
     print(args)
     print("torch version: ", torch.__version__)
     print("torchvision version: ", torchvision.__version__)
-    # gpus_count = torch.cuda.device_count()
-    # print('Available CUDA devices: ', gpus_count)
-    # print('Current CUDA device: ', torch.cuda.current_device())
 
     device = torch.device(args.device)
     torch.backends.cudnn.benchmark = True
 
     print("Preparing training dataloader")
-    traindir = os.path.join(
-        args.data_path, 'train_256' if not args.fast_test else 'val_256')
+    traindir = os.path.join(args.data_path, 'train_256' if not args.fast_test else 'val_256')
     valdir = os.path.join(args.data_path, 'val_256')
 
     st = time.time()
-    # cache_path = _get_cache_path(traindir)
-    # fixed cache path for docker
-    # cache_path = "/data_volume/sapienza-video-contrastive/cached_data/cached_sample.pt"
     cache_path = args.cache_path
 
     transform_train = utils.augs.get_train_transforms(args)
@@ -123,7 +119,10 @@ def main(args):
                 extensions=('mp4'),
                 frame_rate=args.frame_skip,
                 # cached=cached,
-                _precomputed_metadata=cached
+                _precomputed_metadata=cached,
+                sp_method=args.sp_method,
+                num_components=args.num_sp,
+                prob=args.prob
             )
         # HACK assume image dataset if data path is a directory
         elif os.path.isdir(args.data_path):
