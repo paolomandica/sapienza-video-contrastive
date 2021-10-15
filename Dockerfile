@@ -8,30 +8,18 @@ ENV USERNAME=francolu
 RUN addgroup --gid $GROUP_ID $USERNAME
 RUN adduser --home /home/$USERNAME --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID $USERNAME
 
-# Set the working directory
+# Set the working directory and user
 WORKDIR /home/$USERNAME
 
 # Clone the repo
-RUN apt-get update && apt-get install git nano -y
+RUN apt-get update && apt-get install git nano tree screen wget -y
 RUN apt-get install ffmpeg libsm6 libxext6  -y
-
-RUN git clone https://github.com/paolomandica/sapienza-video-contrastive.git
-
-# Install requirements
-RUN pip install --ignore-installed -r ./sapienza-video-contrastive/requirements.txt
 
 # Clone and install evaluation repo
 RUN git clone https://github.com/davisvideochallenge/davis2017-evaluation.git
 RUN python ./davis2017-evaluation/setup.py install
 
-
-RUN chown $USERNAME -R ./sapienza-video-contrastive/
-RUN chmod u+rwx -R ./sapienza-video-contrastive/
+# Install requirements
+# RUN pip install --ignore-installed -r https://raw.githubusercontent.com/paolomandica/sapienza-video-contrastive/main/requirements.txt
 
 USER $USERNAME
-
-RUN pip install accelerate -y
-
-# RUN dvc pull
-
-# CMD ["python", "./sapienza-video-contrastive/code/train.py"]
