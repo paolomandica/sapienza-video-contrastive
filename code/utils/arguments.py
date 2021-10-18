@@ -183,11 +183,11 @@ def train_args():
                         help='use sinkhorn-knopp to obtain targets, by taking the argmax')
 
     parser.add_argument('--sp-method', default='slic', type=str,
-                        help='slic | random')
+                        help='none | slic | random')
     parser.add_argument('--num-sp', default=30, type=int,
                         help='number of components for SLIC')
-    parser.add_argument('--prob', default=0.5, type=float,
-                        help='sampling probability of sp method')
+    parser.add_argument('--prob', default=1.0, type=float,
+                        help='sampling probability of patches or superpixels')
 
     args = parser.parse_args()
 
@@ -195,6 +195,11 @@ def train_args():
         args.batch_size = 1
         args.workers = 0
         args.data_parallel = False
+
+    if args.prob == 1.0:
+        args.sp_method = 'none'
+    elif args.prob == 0:
+        args.frame_aug = 'none'
 
     if args.output_dir == 'auto':
         keys = {

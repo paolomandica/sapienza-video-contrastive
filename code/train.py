@@ -24,8 +24,8 @@ from model import CRW
 # os.environ['WANDB_MODE'] = 'offline'
 
 
-def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, print_freq,
-                    vis=None, checkpoint_fn=None):
+def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
+                    epoch, print_freq, vis=None, checkpoint_fn=None, prob=None):
 
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -36,21 +36,23 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
 
     header = 'Epoch: [{}]'.format(epoch)
 
-    for step, batch in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for step, ((video, orig), sp_mask) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         start_time = time.time()
 
         # init wandb
-        if epoch==0 and step==0:
+        if epoch == 0 and step == 0 and vis is not None:
             vis.wandb_init(model)
 
-        video, sp_mask = batch
-        video, orig = video
-        video = video.to(device)
-        sp_mask = sp_mask.to(device)
+        grid = np.random.choice([True, False], p=[prob, 1-prob])
 
-        max_sp_num = len(torch.unique(sp_mask))
+        if grid:
+            video = video.to(device)
+            output, loss, diagnostics = model(video, None, None)
+        else:
+            sp_mask = sp_mask.to(device)
+            max_sp_num = len(torch.unique(sp_mask))
+            output, loss, diagnostics = model(orig, sp_mask, max_sp_num)
 
-        output, loss, diagnostics = model(video, sp_mask, max_sp_num)
         loss = loss.mean()
 
         if vis is not None and np.random.random() < 0.1:
@@ -99,7 +101,8 @@ def main(args):
     torch.backends.cudnn.benchmark = True
 
     print("Preparing training dataloader")
-    traindir = os.path.join(args.data_path, 'train_256' if not args.fast_test else 'val_256')
+    traindir = os.path.join(
+        args.data_path, 'train_256' if not args.fast_test else 'val_256')
     valdir = os.path.join(args.data_path, 'val_256')
 
     st = time.time()
@@ -232,7 +235,8 @@ def main(args):
     for epoch in range(args.start_epoch, args.epochs):
         train_one_epoch(model, optimizer, lr_scheduler, data_loader,
                         device, epoch, args.print_freq,
-                        vis=vis, checkpoint_fn=save_model_checkpoint)
+                        vis=vis, checkpoint_fn=save_model_checkpoint,
+                        prob=args.prob)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
