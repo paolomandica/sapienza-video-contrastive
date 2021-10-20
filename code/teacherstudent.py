@@ -8,9 +8,9 @@ import utils
 
 EPS = 1e-20
 
-class CRW(nn.Module):
+class CRWBase(nn.Module):
     def __init__(self, args, vis=None):
-        super(CRW, self).__init__()
+        super(CRWBase, self).__init__()
         self.args = args
 
         self.edgedrop_rate = getattr(args, 'dropout', 0)
@@ -293,7 +293,7 @@ class SoftCrossEntropyLoss(_Loss):
 
 class CRWTeacherStudent(nn.Module):
     '''
-    A Teacher-Student model class which instantiates an internal CRW model and loads pretrained 
+    A Teacher-Student model class which instantiates an internal CRWBase model and loads pretrained 
     weights into it to consistitute the teacher. The `encoder` and `selfsim_fc` attributes are 
     used to produce parallel outputs. 
 
@@ -318,7 +318,7 @@ class CRWTeacherStudent(nn.Module):
         self.selfsim_fc = self.make_head(depth=getattr(args, 'head_depth', 0))
 
         # Teacher Components
-        self.teacher = CRW(args)
+        self.teacher = CRWBase(args)
         pretrained_state_dict = torch.load(args.path_to_pretrained)
         self.teacher.load_state_dict(pretrained_state_dict['model'])
         self.teacher.to(self.args.device)

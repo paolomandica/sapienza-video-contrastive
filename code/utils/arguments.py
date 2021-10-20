@@ -195,6 +195,8 @@ def train_args():
                         help='sampling probability of patches or superpixels')
 
     # Teacher-Student
+    parser.add_argument('--teacher-student', default=False, action='store_true',
+                        help='train with combined teacher-student and contrastive walk loss')
     parser.add_argument('--path-to-pretrained', default='../pretrained.pth', type=str)
     parser.add_argument('--alpha-teacher-student', # default=, # TODO Set a sensible alpha value after prototyping
                         type=float, help='alpha hyperparameter to balance teacher and student losses. Must be in [0, 1]')
