@@ -24,6 +24,7 @@ class CRW(nn.Module):
         self.encoder = utils.make_encoder(args).to(self.args.device)
         self.infer_dims()
         self.selfsim_fc = self.make_head(depth=getattr(args, "head_depth", 0))
+        self.zero_softmax = self.ZeroSoftmax()
 
         self.xent = nn.CrossEntropyLoss(reduction="none")
         self._xent_targets = dict()
@@ -54,7 +55,7 @@ class CRW(nn.Module):
         if depth >= 0:
             dims = [self.enc_hid_dim] + [self.enc_hid_dim] * depth + [128]
             for d1, d2 in zip(dims, dims[1:]):
-                h = nn.Linear(d1, d2)
+                h = nn.Linear(d1, d2, bias=False)
                 head += [h, nn.ReLU()]
             head = head[:-1]
 
@@ -80,6 +81,16 @@ class CRW(nn.Module):
 
         return A.squeeze(1) if in_t_dim < 4 else A
 
+    class ZeroSoftmax(nn.Module):
+        def __init__(self):
+            super(ZeroSoftmax, self).__init__()
+
+        def forward(self, x, dim=0, eps=1e-5):
+            x_exp = torch.pow(torch.exp(x) - 1, exponent=2)
+            x_exp_sum = torch.sum(x_exp, dim=dim, keepdim=True)
+            x = x_exp / (x_exp_sum + eps)
+            return x
+
     def stoch_mat(self, A, zero_diagonal=False, do_dropout=True, do_sinkhorn=False):
         """Affinity -> Stochastic Matrix"""
 
@@ -94,7 +105,8 @@ class CRW(nn.Module):
                 (A / self.temperature).exp(), tol=0.01, max_iter=100, verbose=False
             )
 
-        return F.softmax(A / self.temperature, dim=-1)
+        # return F.softmax(A / self.temperature, dim=-1)
+        return self.zero_softmax(A / self.temperature, dim=-1)
 
     def pixels_to_nodes(self, x):
         """
