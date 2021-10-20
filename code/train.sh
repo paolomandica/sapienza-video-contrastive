@@ -12,10 +12,10 @@ cache_path_sample="/data_volume/data/cached_data/kinetics_sample.pt"
 # Core {Superpixels | Patches | Mix} Model Training
 ####################################################################################################
 
-python -W ignore train.py --data-path $path_to_kinetics \
---cache-dataset --cache-path $cache_path \
+python -W ignore train.py --data-path $path_to_kinetics_sample \
+--cache-dataset --cache-path $cache_path_sample \
 --frame-aug grid --dropout 0.1 --clip-len 4 --temp 0.05 \
---model-type "scratch" --workers 30 --batch-size 16 --lr 0.0001 \
+--model-type "scratch" --workers 30 --batch-size 8 --lr 0.0001 \
 --epochs 10 \
 --sp-method slic --num-sp 30 --prob 0.7 \
  --data-parallel 
@@ -26,10 +26,10 @@ python -W ignore train.py --data-path $path_to_kinetics \
 # Teacher-Student Training
 ####################################################################################################
 
-python -W ignore train.py --data-path $path_to_kinetics \
---cache-dataset --cache-path $cache_path \
---frame-aug grid --dropout 0.1 --clip-len 4 --temp 0.05 \
---model-type "scratch" --workers 30 --batch-size 8  --lr 0.0001 \
---data-parallel \
---alpha-teacher-student 0.5 
-# --visualize
+# python -W ignore train.py --data-path $path_to_kinetics \
+# --cache-dataset --cache-path $cache_path \
+# --frame-aug grid --dropout 0.1 --clip-len 4 --temp 0.05 \
+# --model-type "scratch" --workers 30 --batch-size 8  --lr 0.0001 \
+# --data-parallel \
+# --alpha-teacher-student 0.5 
+# # --visualize
