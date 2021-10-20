@@ -10,7 +10,6 @@ import pdb
 
 EPS = 1e-20
 
-
 class CRW(nn.Module):
     def __init__(self, args, vis=None):
         super(CRW, self).__init__()

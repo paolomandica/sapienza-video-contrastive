@@ -10,6 +10,9 @@ from argparse import Namespace
 def common_args(parser):
     return parser
 
+####################################################################################################
+# Test Arguments Constructor (Argument Parser)
+####################################################################################################
 
 def test_args():
     # Parse arguments
@@ -20,8 +23,7 @@ def test_args():
                         help='number of data loading workers (default: 4)')
     parser.add_argument('--resume', default='', type=str, metavar='PATH',
                         help='path to latest checkpoint (default: none)')
-    parser.add_argument('--manualSeed', type=int,
-                        default=777, help='manual seed')
+    parser.add_argument('--manualSeed', type=int,default=777, help='manual seed')
 
     # Device options
     parser.add_argument('--gpu-id', default='0', type=str,
@@ -40,8 +42,8 @@ def test_args():
     parser.add_argument('--cropSize', default=320, type=int,
                         help='resizing of test image, -1 for native size')
 
-    parser.add_argument(
-        '--filelist', default='/scratch/ajabri/data/davis/val2017.txt', type=str)
+    parser.add_argument('--filelist', default='/scratch/ajabri/data/davis/val2017.txt', 
+                        type=str)
     parser.add_argument('--save-path', default='./results', type=str)
 
     parser.add_argument('--visdom', default=False, action='store_true')
@@ -52,18 +54,14 @@ def test_args():
     parser.add_argument('--head-depth', default=-1, type=int,
                         help='depth of mlp applied after encoder (0 = linear)')
 
-    parser.add_argument('--remove-layers',
-                        default=['layer4'], help='layer[1-4]')
+    parser.add_argument('--remove-layers', default=['layer4'], help='layer[1-4]')
     parser.add_argument('--no-l2', default=False, action='store_true', help='')
 
-    parser.add_argument(
-        '--long-mem', default=[0], type=int, nargs='*', help='')
-    parser.add_argument('--texture', default=False,
-                        action='store_true', help='')
+    parser.add_argument('--long-mem', default=[0], type=int, nargs='*', help='')
+    parser.add_argument('--texture', default=False, action='store_true', help='')
     parser.add_argument('--round', default=False, action='store_true', help='')
 
-    parser.add_argument('--norm_mask', default=False,
-                        action='store_true', help='')
+    parser.add_argument('--norm_mask', default=False, action='store_true', help='')
     parser.add_argument('--finetune', default=0, type=int, help='')
     parser.add_argument('--pca-vis', default=False, action='store_true')
 
@@ -85,13 +83,20 @@ def test_args():
 
     return args
 
+####################################################################################################
+# Training Arguments Constructor (Argument Parser)
+####################################################################################################
 
 def train_args():
     parser = argparse.ArgumentParser(description='Video Walk Training')
 
-    parser.add_argument(
-        '--data-path', default="/data_volume/sapienza-video-contrastive/kinetics/")
-    parser.add_argument('--cache-path', help="filepath of the cached dataset")
+    parser.add_argument('--data-path', default='/data_volume/data/kinetics/', 
+        help='/data_volume/data/kinetics/ | /data_volume/data/kinetics_sample/')
+    # Jabri's original data_path; maintained for reference for now
+    # parser.add_argument('--data-path', default='/data/ajabri/kinetics/',
+    #     help='/home/ajabri/data/places365_standard/train/ | /data/ajabri/kinetics/')
+    parser.add_argument('--cache-path', type=str, default='/data_volume/data/cached_data/kinetics.pt',
+                        help="filepath of the cached dataset")
     parser.add_argument('--device', default='cuda', help='device')
     parser.add_argument('--clip-len', default=8, type=int, metavar='N',
                         help='number of frames per clip')
@@ -188,6 +193,13 @@ def train_args():
                         help='number of components for SLIC')
     parser.add_argument('--prob', default=1.0, type=float,
                         help='sampling probability of patches or superpixels')
+
+    # Teacher-Student
+    parser.add_argument('--teacher-student', default=False, action='store_true',
+                        help='train with combined teacher-student and contrastive walk loss')
+    parser.add_argument('--path-to-pretrained', default='../pretrained.pth', type=str)
+    parser.add_argument('--alpha-teacher-student', # default=, # TODO Set a sensible alpha value after prototyping
+                        type=float, help='alpha hyperparameter to balance teacher and student losses. Must be in [0, 1]')
 
     args = parser.parse_args()
 
