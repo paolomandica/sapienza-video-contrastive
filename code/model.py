@@ -143,40 +143,52 @@ class CRW(nn.Module):
             # removed: device = "cuda" if torch.cuda.is_available() else "cpu"
             device = next(self.encoder.parameters()).device # theoretically more robust than self.args.device
 
-            img_map = img_maps[:, t, :, :].permute(1, 2, 0) # New shape is: (H, W, C) = (32, 32, 512)
-            segments = sp_mask[t, :, :]  # Shape is: (h, w) = (256, 256)
+            img_map = img_maps[:, t, :, :].permute(1, 2, 0) # New shape: (H, W, C) = (32, 32, 512)
+            segments = sp_mask[t, :, :]  # Shape: (h, w) = (256, 256)
 
             # Compute mask for each superpixel; shape: (num_sp, h, w) = (~50, 256, 256)
             sp_tensor = torch.stack([(segments == sp).int() for sp in torch.unique(segments)]).cpu().numpy()
 
             # Compute receptive fields relative to each superpixel mask
-            out = skimage.util.view_as_windows(
-                sp_tensor, (sp_tensor.shape[0], int(h / H), int(w / W)), step=int(h / H)
-            ).squeeze(0)
-
-            breakpoint()
             # This should have as shape (num_windows, num_windows, num_sp, window_size, window_size) = (32, 32, ~50, 8, 8)
+            out = skimage.util.view_as_windows(sp_tensor, 
+                                               (sp_tensor.shape[0], int(h / H), int(w / W)), 
+                                               step=int(h / H)
+                                               ).squeeze(0)
+
+            
+            # Prototyping
+            _sp_tensor = torch.stack([(segments == sp).int() for sp in torch.unique(segments)])
+            _out = view_as_windows(_sp_tensor, (sp_tensor.shape[0], int(h / H), int(w / W)), step=int(h / H))
+
+            breakpoint() 
+
+            # On breakpoint, run: 
+            # (_out[0].cpu().numpy() == out).all()
+            # The above demonstrates that the parallelised version of the function thus far is implementing 
+            # the same computation in parallel with pure torch operations. 
+            # Next step: This means we can compute all final_feats in one operation by "batching" on the 
+            #            dimension. 
 
             # Extract features weight as normalized interesction of sp mask and receptive field of each features
-            # size of superpixels for each receptive field - shape is (num_windows, num_windows, num_sp) = (32,32,~50)
-            ww_not_norm = torch.sum(
-                torch.sum(torch.from_numpy(out).to(device), dim=-1), dim=-1
-            )
-            # Size of each superpixel - shape is num_sp = = (~50)
+            # size of superpixels for each receptive field - shape (num_windows, num_windows, num_sp) = (32,32,~50)
+            ww_not_norm = torch.sum(torch.sum(torch.from_numpy(out).to(device), dim=-1), dim=-1)
+
+            # Size of each superpixel - shape num_sp = = (~50)
             sp_size = torch.sum(torch.sum(torch.from_numpy(sp_tensor).to(device), dim=-1), dim=-1)
             ww_norm = ww_not_norm / sp_size
 
             # Expand correctly weights and features map to use tensor instead of for loop
-            # Shape is: (num_windows, num_windows, C, num_sp) = (32,32,512,~50)
+            # Shape: (num_windows, num_windows, C, num_sp) = (32,32,512,~50)
             ww_norm_expand = ww_norm.unsqueeze(2).repeat(1, 1, C, 1)
-            # Shape is: (num_feat, num_feat, C, num_sp) = (32,32,512,~50)
+            # Shape: (num_feat, num_feat, C, num_sp) = (32,32,512,~50)
             img_map_expand = img_map.unsqueeze(-1).repeat(1, 1, 1, ww_norm_expand.shape[-1])
             # Please note num_windows and num_feat are the same.
             # So we repeat weights for each feature channels and feat for each superpixels, because they are independent
 
             # Weighted mean of the features
             oo = ww_norm_expand * img_map_expand
-            feats = torch.sum(torch.sum(oo, 0), 0).permute(1, 0)  # Shape is: (~50, 512)
+            feats = torch.sum(torch.sum(oo, 0), 0).permute(1, 0)  # Shape: (~50, 512)
 
             final_feats.append(feats)
 

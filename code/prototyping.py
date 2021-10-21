@@ -145,18 +145,18 @@ def view_as_windows(arr_in, window_shape, step=1):
 
     # -- build rolling window view
     slices = tuple(slice(None, None, st) for st in step)
-    window_strides = torch.tensor(arr_in.strides)
+    window_stride = torch.tensor(arr_in.stride(), dtype=torch.long)
 
-    indexing_strides = arr_in[slices].strides
+    indexing_stride = arr_in[slices].stride()
 
     win_indices_shape = (((torch.tensor(arr_in.shape) - torch.tensor(window_shape))
                           // torch.tensor(step)) + 1)
 
     new_shape = tuple(list(win_indices_shape) + list(window_shape))
-    strides = tuple(list(indexing_strides) + list(window_strides))
+    stride = tuple(list(indexing_stride) + list(window_stride))
 
     # import numpy as np
     # arr_out = np.lib.stride_tricks.as_strided(arr_in, shape=new_shape, strides=strides)
     
-    arr_out = torch.as_strided(arr_in, size=new_shape, strides=strides)
+    arr_out = torch.as_strided(arr_in, size=new_shape, stride=stride)
     return arr_out
