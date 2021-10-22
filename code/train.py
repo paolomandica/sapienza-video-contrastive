@@ -43,32 +43,43 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
         if epoch == 0 and step == 0 and vis is not None:
             vis.wandb_init(model)
 
-        grid = np.random.choice([True, False], p=[prob, 1-prob])
+        # forward with patches
+        video = video.to(device)
+        output, loss, diagnostics = model(video, None, None)
 
-        if grid:
-            video = video.to(device)
-            output, loss, diagnostics = model(video, None, None)
-        else:
-            sp_mask = sp_mask.to(device)
-            max_sp_num = len(torch.unique(sp_mask))
-            output, loss, diagnostics = model(orig, sp_mask, max_sp_num)
+        # forward with superpixels
+        sp_mask = sp_mask.to(device)
+        max_sp_num = len(torch.unique(sp_mask))
+        output_sp, loss_sp, diagnostics_sp = model(
+            orig, sp_mask, max_sp_num)
 
         loss = loss.mean()
+        loss_sp = loss_sp.mean()
+        a = prob
+        loss_sum = a*loss + (1-a)*loss_sp
+
+        diagnostics_dict = dict()
+        items = list(diagnostics.items()) + list(diagnostics_sp.items())
+        for k, v in items:
+            if k not in diagnostics_dict:
+                diagnostics_dict[k] = v
+            else:
+                diagnostics_dict[k] = torch.cat([diagnostics_dict[k], v])
 
         if vis is not None and np.random.random() < 0.1:
-            vis.log(dict(loss=loss.mean().item()))
-            vis.log({k: v.mean().item() for k, v in diagnostics.items()})
+            vis.log(dict(loss=loss_sum.mean().item()))
+            vis.log({k: v.mean().item()
+                    for k, v in diagnostics_dict.items()})
 
         if checkpoint_fn is not None and np.random.random() < 0.005:
             checkpoint_fn()
 
         optimizer.zero_grad()
-        loss.backward()
-        # print(torch.nn.utils.clip_grad_norm_(model.parameters(), 1), 'grad norm')
+        loss_sum.backward()
         optimizer.step()
 
         metric_logger.update(
-            loss=loss.item(), lr=optimizer.param_groups[0]["lr"])
+            loss=loss_sum.item(), lr=optimizer.param_groups[0]["lr"])
         metric_logger.meters['clips/s'].update(
             video.shape[0] / (time.time() - start_time))
         lr_scheduler.step()
@@ -187,7 +198,6 @@ def main(args):
 
     print("Creating model")
     model = CRW(args, vis=vis).to(device)
-    # print(model)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
@@ -197,7 +207,6 @@ def main(args):
 
     model_without_ddp = model
 
-    accelerator = None
     if args.data_parallel:
         model = torch.nn.parallel.DataParallel(model)
         model_without_ddp = model.module
