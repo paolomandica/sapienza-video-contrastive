@@ -116,7 +116,7 @@ class CRW(nn.Module):
             N, H, W = maps.shape[0] // B, 1, 1
 
         # compute node embeddings by spatially pooling node feature maps
-        feats = maps.sum(-1).sum(-1) / (H * W)
+        feats = maps.mean(-1).mean(-1)
         feats = self.selfsim_fc(feats.transpose(-1, -2)).transpose(-1, -2)
         feats = F.normalize(feats, p=2, dim=1)
 
@@ -125,85 +125,76 @@ class CRW(nn.Module):
 
         return feats, maps
 
-    def extract_sp_feat(self, img, img_maps, sp_mask):
+    def extract_sp_feat(self, video, maps, superpixel_mask, max_sp_num):
         """
-        img has shape of c, T, h, w
-        img_maps has shape of C, T, H, W
-        sp_mask has shape of T, h, w
+        video has shape of c, T, h, w
+        maps has shape of C, T, H, W
+        superpixel_mask has shape of T, h, w
         """
 
-        c, T, h, w = img.shape
-        C, T, H, W = img_maps.shape
+        c, T, h, w = video.shape
+        C, T, H, W = maps.shape
 
         final_feats = []
         final_segment = []
 
         for t in range(T):
-
-            # removed: device = "cuda" if torch.cuda.is_available() else "cpu"
-            device = next(self.encoder.parameters()).device # theoretically more robust than self.args.device
-
-            img_map = img_maps[:, t, :, :].permute(1, 2, 0) # New shape: (H, W, C) = (32, 32, 512)
-            segments = sp_mask[t, :, :]  # Shape: (h, w) = (256, 256)
-
-            # Compute mask for each superpixel; shape: (num_sp, h, w) = (~50, 256, 256)
-            sp_tensor = torch.stack([(segments == sp).int() for sp in torch.unique(segments)]).cpu().numpy()
-
-            # Compute receptive fields relative to each superpixel mask
-            # This should have as shape (num_windows, num_windows, num_sp, window_size, window_size) = (32, 32, ~50, 8, 8)
-            out = skimage.util.view_as_windows(sp_tensor, 
-                                               (sp_tensor.shape[0], int(h / H), int(w / W)), 
-                                               step=int(h / H)
-                                               ).squeeze(0)
-
+            img_map = maps[:, t].permute(1, 2, 0) # after .permute(): (H, W, C) ; (32, 32, 512)
+            segments = superpixel_mask[t] # (h, w) ; (256, 256)
             
-            # Prototyping
-            _sp_tensor = torch.stack([(segments == sp).int() for sp in torch.unique(segments)])
-            _out = view_as_windows(_sp_tensor, (sp_tensor.shape[0], int(h / H), int(w / W)), step=int(h / H))
+            # Tensor of masks for all superpixels; shape: (num_sp, h, w) ; (~50, 256, 256)
 
-            breakpoint() 
+            # NB Consider using torch.Tensor.scatter to perform this operation; i.e. sp_mask -> sp
+            superpixels = (segments == torch.unique(segments)[:, None, None].expand(-1, h, w)).int()
 
-            # On breakpoint, run: 
-            # (_out[0].cpu().numpy() == out).all()
-            # The above demonstrates that the parallelised version of the function thus far is implementing 
-            # the same computation in parallel with pure torch operations. 
-            # Next step: This means we can compute all final_feats in one operation by "batching" on the 
-            #            dimension. 
+            ####################################################################################################
+            # Follow this route to parallelisation of the whole image_to_node function, i.e. pad `superpixels`; 
+            # formerly called `sp_tensor`
+            # 
+            # By padding the superpixels themselves, we allow the overall output to maintain a "n_superpixels"-
+            # dimension (`max_sp_num`), which gets around the need for unvectorised operations. 
+            # 
+            # 
+            # Consider using tensor.scatter (out-of-place) to perform the operation above going from the 
+            # superpixel mask to `superpixels`
+            # See: https://pytorch.org/docs/stable/generated/torch.Tensor.scatter_.html#torch.Tensor.scatter_ 
+            #
+            # This will need to be followed by a pad of the form shown immediately below this note. 
+            ####################################################################################################
+            
+            superpixels = F.pad(superpixels, (0,)*5 + (max_sp_num - superpixels.shape[0],))
 
-            # Extract features weight as normalized interesction of sp mask and receptive field of each features
-            # size of superpixels for each receptive field - shape (num_windows, num_windows, num_sp) = (32,32,~50)
-            ww_not_norm = torch.sum(torch.sum(torch.from_numpy(out).to(device), dim=-1), dim=-1)
-
-            # Size of each superpixel - shape num_sp = = (~50)
-            sp_size = torch.sum(torch.sum(torch.from_numpy(sp_tensor).to(device), dim=-1), dim=-1)
+            # Compute receptive fields relative to each superpixel mask; 
+            # shape (num_windows, num_windows, num_sp, window_size, window_size); (32, 32, ~50, 8, 8)
+            out = view_as_windows(superpixels, (superpixels.shape[0], h//H, w//W), step=h//H).squeeze(0)
+            # Extract features weight as normalized interesction of sp mask and receptive field of each feature
+            # size of superpixels for each receptive field; shape (num_windows, num_windows, num_sp); (32, 32, ~50)
+            ww_not_norm = out.sum(-1).sum(-1)
+            # Size of each superpixel; shape: num_sp; (~50)
+            sp_size = superpixels.sum(-1).sum(-1)
             ww_norm = ww_not_norm / sp_size
-
-            # Expand correctly weights and features map to use tensor instead of for loop
-            # Shape: (num_windows, num_windows, C, num_sp) = (32,32,512,~50)
+            # Expand weights and feature maps; shape: (num_windows, num_windows, C, num_sp); (32, 32, 512, ~50)
             ww_norm_expand = ww_norm.unsqueeze(2).repeat(1, 1, C, 1)
-            # Shape: (num_feat, num_feat, C, num_sp) = (32,32,512,~50)
+            # shape: (num_feat, num_feat, C, num_sp) = (32, 32, 512, ~50)
             img_map_expand = img_map.unsqueeze(-1).repeat(1, 1, 1, ww_norm_expand.shape[-1])
-            # Please note num_windows and num_feat are the same.
-            # So we repeat weights for each feature channels and feat for each superpixels, because they are independent
-
+            # NOTE num_windows and num_feat are equal
+            # We repeat weights for each feature channel and feat for each superpixel because they are independent
             # Weighted mean of the features
             oo = ww_norm_expand * img_map_expand
-            feats = torch.sum(torch.sum(oo, 0), 0).permute(1, 0)  # Shape: (~50, 512)
-
+            feats = oo.sum(0).sum(0).permute(1, 0)
             final_feats.append(feats)
 
-        return final_feats, final_segment
+        return final_feats, final_segment # final_segment appears to just be an empty list returned by extract_sp_feat
 
-    def image_to_nodes(self, x, sp_mask, max_sp_num):
+    def image_to_nodes(self, x, superpixel_mask, max_sp_num):
         """Inputs:
             -- 'x' (B x C x T x h x w), batch of images
         Outputs:
             -- 'feats' (B x C x T x N), node embeddings
             -- 'maps'  (B x C x T x H x W), node feature maps
         """
-
         B, T, c, h, w = x.shape
-        x = x.permute(0, 2, 1, 3, 4)  # New shape B, c, T, h, w
+        x = x.permute(0, 2, 1, 3, 4)  # new shape after permute: B, c, T, h, w
         maps = self.encoder(x)
         B, C, T, H, W = maps.shape
         N = max_sp_num
@@ -215,24 +206,20 @@ class CRW(nn.Module):
         seg_list = []
 
         for b in range(B):
-            ff, seg = self.extract_sp_feat(x[b], maps[b], sp_mask[b, :, 0, :, :])
+            # ff, seg = self.extract_sp_feat(x[b], maps[b], superpixel_mask[b, :, 0, :, :])
+            ff, _ff, seg = self.extract_sp_feat(x[b], maps[b], superpixel_mask[b, :, 0, :, :], max_sp_num) # prototyping
 
             ff_list.append(ff)
             seg_list.append(seg)
 
         ff_tensor = torch.empty((0, T, max_sp_num, C), requires_grad=True, device="cuda")
-
         for ff in ff_list:
             ff_time_tensor = torch.empty((0, max_sp_num, C), requires_grad=True, device="cuda")
-
             for sp_feats in ff:
-                temp_sp_feats = nn.functional.pad(
-                    sp_feats,
-                    pad=(0, 0, 0, max_sp_num - sp_feats.shape[0]),
-                    mode="constant",
-                ).unsqueeze(0)
+                temp_sp_feats = F.pad(sp_feats,
+                                      pad=(0, 0, 0, max_sp_num - sp_feats.shape[0]),
+                                      mode="constant",).unsqueeze(0)
                 ff_time_tensor = torch.cat((ff_time_tensor, temp_sp_feats), dim=0)
-
             ff_tensor = torch.cat((ff_tensor, ff_time_tensor.unsqueeze(0)), dim=0)
 
         # compute frame embeddings by spatially pooling frame feature maps
@@ -244,7 +231,7 @@ class CRW(nn.Module):
 
         return ff_tensor, seg_list
 
-    def forward(self, x, sp_mask, max_sp_num, just_feats=False):
+    def forward(self, x, superpixel_mask, max_sp_num, just_feats=False):
         """
         Input is B x T x N*C x H x W, where either
            N>1 -> list of patches of images
@@ -256,17 +243,19 @@ class CRW(nn.Module):
         # Image/Pixels to Nodes
         #################################################################
 
-        q = None
-        if sp_mask is None:
+        q = None # Looks like a debugging vestige; TODO Remove
+
+        if superpixel_mask is None:
             # use patches
             _N, C = C // 3, 3
             x = x.transpose(1, 2).view(B, _N, C, T, H, W)
             q, mm = self.pixels_to_nodes(x)
         else:
             # compute superpixels masks if not loaded
-            q, mm = self.image_to_nodes(x, sp_mask, max_sp_num)
+            q, mm = self.image_to_nodes(x, superpixel_mask, max_sp_num)
 
         assert q is not None
+
         B, C, T, N = q.shape
 
         if just_feats:
