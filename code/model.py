@@ -6,6 +6,7 @@ import utils
 import skimage
 
 from skimage.util import img_as_float
+from utils import ZeroSoftmax
 import pdb
 
 EPS = 1e-20
@@ -24,7 +25,7 @@ class CRW(nn.Module):
         self.encoder = utils.make_encoder(args).to(self.args.device)
         self.infer_dims()
         self.selfsim_fc = self.make_head(depth=getattr(args, "head_depth", 0))
-        self.zero_softmax = self.ZeroSoftmax()
+        self.zero_softmax = ZeroSoftmax()
 
         self.xent = nn.CrossEntropyLoss(reduction="none")
         self._xent_targets = dict()
@@ -80,16 +81,6 @@ class CRW(nn.Module):
         #     A = self.restrict(A)
 
         return A.squeeze(1) if in_t_dim < 4 else A
-
-    class ZeroSoftmax(nn.Module):
-        def __init__(self):
-            super(ZeroSoftmax, self).__init__()
-
-        def forward(self, x, dim=0, eps=1e-5):
-            x_exp = torch.pow(torch.exp(x) - 1, exponent=2)
-            x_exp_sum = torch.sum(x_exp, dim=dim, keepdim=True)
-            x = x_exp / (x_exp_sum + eps)
-            return x
 
     def stoch_mat(self, A, zero_diagonal=False, do_dropout=True, do_sinkhorn=False):
         """Affinity -> Stochastic Matrix"""
