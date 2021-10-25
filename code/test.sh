@@ -1,8 +1,10 @@
 vallist="/data_volume/sapienza-video-contrastive/code/eval/davis_vallist.txt"
-checkpoint="./checkpoints/parallel_drop0.1-len4-ftranscrop-fauggrid-optimadam-temp0.05-fdrop0.0-lr0.0001-mlp0-spslic-nsp30-p0.7/model_1.pth"
-savepath="../results/scratch_4_parallel/"
-outpath="../results/scratch_4_parallel_converted/"
+checkpoint="./checkpoints/_drop0.1-len4-ftranscrop-fauggrid-optimadam-temp0.05-fdrop0.0-lr0.0001-mlp0-spslic-nsp30-p0.7/model_9.pth"
+savepath="../results/masks_grid_slic/"
+outpath="../results/converted_grid_slic/"
 dataset="/data_volume/data/davis_val/"
+
+# rm -rf ../results/*
 
 python test.py --filelist $vallist --model-type scratch \
 --resume $checkpoint --save-path $savepath \
