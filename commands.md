@@ -52,6 +52,20 @@ docker run -it `# run command, keep STDIN open for interactive mode, attach stdi
 paolomandica/sapienza-video-contrastive `# Docker Image to Run`
 ```
 
+### Docker Container on PINLab Workstation
+
+An amended version of the above with an appropriate mapping for the data location on PINLab's workstation. 
+
+```sh
+docker run -it \
+--user "$(id -u):$(id -g)" \
+--gpus '"device=0"' \
+--shm-size 4G \
+-v /home/ares/luca/panasonic/data:/data_volume \
+-p 8093:8093 \
+paolomandica/sapienza-video-contrastive
+```
+
 ### Pull Down Project from GitHub
 
 Clone repo (inc. PAT), `cd` into it, checkout `ts` branch and `cd` into the code subdirectory. 
