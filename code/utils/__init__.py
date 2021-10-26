@@ -246,8 +246,7 @@ def partial_load(pretrained_dict, model, skip_keys=[]):
 
 def load_vince_model(path):
     checkpoint = torch.load(path, map_location={'cuda:0': 'cpu'})
-    checkpoint = {k.replace('feature_extractor.module.model.', '')
-                            : checkpoint[k] for k in checkpoint if 'feature_extractor' in k}
+    checkpoint = {k.replace('feature_extractor.module.model.', ''): checkpoint[k] for k in checkpoint if 'feature_extractor' in k}
     return checkpoint
 
 
@@ -353,7 +352,7 @@ def make_encoder(args):
 
 class MaskedAttention(nn.Module):
     '''
-    A module that implements masked attention based on spatial locality 
+    A module that implements masked attention based on spatial locality
     TODO implement in a more efficient way (torch sparse or correlation filter)
     '''
 
@@ -409,6 +408,17 @@ class MaskedAttention(nn.Module):
         mask = self.masks[sid]
 
         return x * mask[0]
+
+
+class ZeroSoftmax(nn.Module):
+    def __init__(self):
+        super(ZeroSoftmax, self).__init__()
+
+    def forward(self, x, dim=0, eps=1e-5):
+        x_exp = torch.pow(torch.exp(x) - 1, exponent=2)
+        x_exp_sum = torch.sum(x_exp, dim=dim, keepdim=True)
+        x = x_exp / (x_exp_sum + eps)
+        return x
 
 #################################################################################
 # Misc
