@@ -17,7 +17,8 @@ from data.video import VideoList
 from torchvision.datasets.samplers.clip_sampler import RandomClipSampler, UniformClipSampler
 
 import utils
-from model import CRW
+# from model import CRW
+from modelparallelise import CRW
 
 from teacherstudent import CRWTeacherStudent
 
