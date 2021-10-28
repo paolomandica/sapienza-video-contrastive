@@ -18,6 +18,9 @@ from torchvision.datasets.samplers.clip_sampler import RandomClipSampler, Unifor
 
 import utils
 from model import CRW
+import resnet
+
+import pdb
 
 from teacherstudent import CRWTeacherStudent
 
@@ -42,18 +45,16 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
     if vis is not None:
         vis.wandb_init(model)
 
+    
+
     for step, ((video, orig), sp_mask) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         start_time = time.time()
+        
+        max_sp_num = len(torch.unique(sp_mask))
+        orig = orig.to(device)
+        sp_mask = sp_mask.to(device)
 
-        grid = np.random.choice([True, False], p=[prob, 1-prob])
-
-        if grid:
-            video = video.to(device)
-            output, loss, diagnostics = model(video, None, None) if not args.teacher_student else model(video)
-        else:
-            sp_mask = sp_mask.to(device)
-            max_sp_num = len(torch.unique(sp_mask))
-            output, loss, diagnostics = model(orig, sp_mask, max_sp_num)
+        output, loss, diagnostics = model(orig, sp_mask, max_sp_num)
         
         loss = loss.mean()
 
@@ -65,7 +66,7 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
         # NOTE Stochastic checkpointing has been retained
         if checkpoint_fn is not None and np.random.random() < 0.005:
             checkpoint_fn()
- 
+
         optimizer.zero_grad()
         loss.backward()
         # print(torch.nn.utils.clip_grad_norm_(model.parameters(), 1), 'grad norm')
@@ -74,6 +75,8 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
         metric_logger.update(loss=loss.item(), lr=optimizer.param_groups[0]["lr"])
         metric_logger.meters['clips/s'].update(video.shape[0] / (time.time() - start_time))
         lr_scheduler.step()
+
+
 
     checkpoint_fn()
 
@@ -126,6 +129,37 @@ def main(args):
 
     transform_train = utils.augs.get_train_transforms(args)
 
+
+    # Load Pretrained model to extract superpixel from it
+    # pretr_net = resnet.resnet18()
+    model_pretr = CRW(args, vis=None).to('cpu')
+    # pretr_net = utils.make_encoder(args).to(device)
+    # checkpoint = torch.load('../pretrained.pth')
+
+    checkpoint = torch.load('../pretrained.pth', map_location='cpu')
+    utils.partial_load(checkpoint['model'], model_pretr)
+
+    pretr_net = model_pretr.encoder
+
+    # pdb.set_trace()
+
+
+    # state = {}
+    # for k,v in checkpoint['model'].items():
+    #     if 'conv1.1.weight' in k or 'conv2.1.weight' in k:
+    #         state[k.replace('.1.weight', '.weight')] = v
+    #     elif "encoder.model" in k:
+    #         new_k = k.replace('encoder.model.', '')
+    #         state[new_k] = v
+    #     else:
+    #         state[k] = v
+
+    # utils.partial_load(state, pretr_net, skip_keys=['head'])
+
+    
+
+
+
     # Dataset
     def make_dataset(is_train, cached=None):
         _transform = transform_train if is_train else transform_test
@@ -142,7 +176,8 @@ def main(args):
                 _precomputed_metadata=cached,
                 sp_method=args.sp_method,
                 num_components=args.num_sp,
-                prob=args.prob
+                prob=args.prob,
+                pretr_net=pretr_net
             )
         # HACK assume image dataset if data path is a directory
         elif os.path.isdir(args.data_path):
@@ -197,18 +232,19 @@ def main(args):
 
     data_loader = torch.utils.data.DataLoader(
         dataset, batch_size=args.batch_size,  # shuffle=not args.fast_test,
-        sampler=train_sampler, num_workers=args.workers//2,
+        sampler=train_sampler, num_workers=args.workers//2, # 0 for the cpu
         pin_memory=True, collate_fn=collate_fn)
 
     # Visualisation
     vis = utils.visualize.Visualize(args) if args.visualize else None
 
+    
+
+
     # Model
     print("Creating model", end="\n"+"-"*100+"\n")
-    if not args.teacher_student:
-        model = CRW(args, vis=vis).to(device)
-    else:
-        model = CRWTeacherStudent(args, vis=None).to(device) # NOTE Disabled vis during prototyping
+    model = CRW(args, vis=vis).to(device)
+
     # print(model)
 
     # Optimizer
