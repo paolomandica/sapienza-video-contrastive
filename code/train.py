@@ -19,7 +19,8 @@ from torchvision.datasets.samplers.clip_sampler import RandomClipSampler, Unifor
 import utils
 from model import CRW
 
-from teacherstudent import CRWTeacherStudent
+# from teacherstudent import CRWTeacherStudent # NB Disabling TS for Jabri CRW model
+from teacherstudentsuperpixels import CRWSuperpixelTeacherStudent
 
 # Disable wandb syncing to the cloud
 # os.environ['WANDB_MODE'] = 'offline'
@@ -49,7 +50,10 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
 
         if grid:
             video = video.to(device)
-            output, loss, diagnostics = model(video, None, None) if not args.teacher_student else model(video)
+            output, loss, diagnostics = model(video, None, None)
+
+            # Used for Teacher-Student for Jabri CRW
+            # output, loss, diagnostics = model(video, None, None) if not args.teacher_student else model(video)
         else:
             sp_mask = sp_mask.to(device)
             max_sp_num = len(torch.unique(sp_mask))
@@ -60,7 +64,7 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
         # if vis is not None and np.random.random() < 0.01:
         if vis is not None:
             vis.log(dict(loss=loss.mean().item()))
-            vis.log({k: v.mean().item() for k, v in diagnostics.items()})
+            # vis.log({k: v.mean().item() for k, v in diagnostics.items()}) # diagnostics is None
 
         # NOTE Stochastic checkpointing has been retained
         if checkpoint_fn is not None and np.random.random() < 0.005:
@@ -103,10 +107,14 @@ def collate_fn(batch):
 
 def main(args):
 
-    # Eager Checks
+    # # Eager Checks for Teacher-Student with Jabri CRW
+    # if args.teacher_student:
+    #     assert args.prob == 1, "Teacher-Student training is not yet compatible with probabistic sp | patch sampling"
+    
+    # Eager Checks for Teacher-Student with Superpixel CRW
     if args.teacher_student:
-        assert args.prob == 1, "Teacher-Student training is not yet compatible with probabistic sp | patch sampling"
-
+        assert args.prob == 0, "Superpixel Teacher-Student training is not yet compatible with probabistic sp | patch sampling"
+    
     print("Arguments", end="\n" + "-"*100 + "\n")
     for arg, value in vars(args).items():
         print(f"{arg} = {value}")
@@ -208,7 +216,7 @@ def main(args):
     if not args.teacher_student:
         model = CRW(args, vis=vis).to(device)
     else:
-        model = CRWTeacherStudent(args, vis=None).to(device) # NOTE Disabled vis during prototyping
+        model = CRWSuperpixelTeacherStudent(args, vis=vis).to(device) # NOTE Disable vis if using TS Jabri
     # print(model)
 
     # Optimizer
@@ -221,7 +229,7 @@ def main(args):
 
     model_without_ddp = model
 
-    accelerator = None
+    accelerator = None # TODO Remove; not used
 
     # Parallelise model over GPUs
     if args.data_parallel:

@@ -689,7 +689,8 @@ class CRWSuperpixelTeacherStudent(nn.Module):
         # Teacher Components
         self.teacher = CRW(args)
         pretrained_state_dict = torch.load(args.path_to_pretrained)
-        self.teacher.load_state_dict(pretrained_state_dict['model'])
+        # self.teacher.load_state_dict(pretrained_state_dict['model']) # NOTE selfsim_fc no bias
+        utils.partial_load(pretrained_state_dict['model'], self.teacher)
         self.teacher.to(self.args.device)
 
         # Freeze teacher model
@@ -711,15 +712,18 @@ class CRWSuperpixelTeacherStudent(nn.Module):
     def forward(self, x, sp_mask, max_sp_num, just_feats=False):
         alpha = self.alpha # for brevity in the loss expression
         q_stdnt, loss_stdnt, diags_stdnt = self.student(x, sp_mask, max_sp_num, just_feats)
-        q_tchr, loss_tchr, diags_tchr = self.teacher(x, sp_mask, max_sp_num, just_feats)
+        # q_tchr, loss_tchr, diags_tchr = self.teacher(x, sp_mask, max_sp_num, just_feats)
+        
+        # permute time and channel dimensions; B, T, c, h, w -> B, c, T, h, w
+        x = x.permute(0, 2, 1, 3, 4) 
 
-        encoded_stdnt = self.student.encoder(x)
-        encoded_tchr = self.teacher.encoder(x)
+        maps_stdnt = self.student.encoder(x)
+        maps_tchr = self.teacher.encoder(x)
         # optionally flatten the above
 
-        loss_ts = self.mle(encoded_stdnt, encoded_tchr)
+        loss_ts = self.mle(maps_stdnt, maps_tchr)
         
         loss = alpha * loss_stdnt + (1 - alpha) * loss_ts
 
-        return loss
+        return None, loss, None # Hack to be able to use same training script
 

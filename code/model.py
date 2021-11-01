@@ -209,7 +209,7 @@ class CRW(nn.Module):
         """
 
         B, T, c, h, w = x.shape
-        x = x.permute(0, 2, 1, 3, 4)  # New shape B, c, T, h, w
+        x = x.permute(0, 2, 1, 3, 4) # New shape B, c, T, h, w
         maps = self.encoder(x)
         B, C, T, H, W = maps.shape
         N = max_sp_num
