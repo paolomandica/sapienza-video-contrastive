@@ -65,6 +65,10 @@ def test_args():
     parser.add_argument('--finetune', default=0, type=int, help='')
     parser.add_argument('--pca-vis', default=False, action='store_true')
 
+    # Teacher-Student
+    parser.add_argument('--teacher-student', default=False, action='store_true',
+                        help='Extract Student from Teacher-Student model for evaluation')
+
     args = parser.parse_args()
 
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id

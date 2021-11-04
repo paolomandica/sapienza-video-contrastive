@@ -27,19 +27,24 @@ def main(args, vis):
     args.mapScale = test_utils.infer_downscale(model)
 
     args.use_lab = args.model_type == 'uvc'
-    dataset = (
-        vos.VOSDataset if not 'jhmdb' in args.filelist else jhmdb.JhmdbSet)(args)
+    dataset = (vos.VOSDataset if not 'jhmdb' in args.filelist else jhmdb.JhmdbSet)(args)
     val_loader = torch.utils.data.DataLoader(dataset,
-                                             batch_size=int(args.batchSize), shuffle=False, num_workers=args.workers, pin_memory=True)
+                                             batch_size=int(args.batchSize), 
+                                             shuffle=False, 
+                                             num_workers=args.workers, 
+                                             pin_memory=True)
 
     # cudnn.benchmark = False
-    print('Total params: %.2fM' % (sum(p.numel()
-                                       for p in model.parameters())/1000000.0))
+    print('Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
 
     # Load checkpoint.
     if os.path.isfile(args.resume):
         print('==> Resuming from checkpoint..')
         checkpoint = torch.load(args.resume)
+        
+        if args.teacher_student:
+            print("Using Teacher-Student Evaluation", end="\n"+"-"*100+"\n")
+            checkpoint = test_utils.extract_student_state_dict(checkpoint)
 
         if args.model_type == 'scratch':
             state = {}

@@ -214,3 +214,26 @@ def infer_downscale(model):
     # scale = out[1].shape[-2:]
     # return 320 // np.array(scale)
     return 320 // np.array([40, 40])
+
+def extract_student_state_dict(state_dict, print_removed_keys=False, stdnt_prefix='student.', tchr_prefix='teacher.'):
+    '''Function to extract student state dictionary when evaluating Teacher-Student models'''
+    
+    assert all([(k.startswith(stdnt_prefix) or k.startswith(tchr_prefix)) for k in state_dict['model'].keys()])
+
+    print("Extracting student model state dictionary", end="\n"+"-"*80+"\n")
+    
+    initial_keys = set(state_dict['model'].keys())
+    
+    state_dict['model'] = {k: v for k, v in state_dict['model'].items() if k.startswith(stdnt_prefix)}
+    
+    retained_keys = set(state_dict['model'].keys())
+    removed_keys = initial_keys - retained_keys
+    
+    if print_removed_keys:
+        print("Removed keys: \n", removed_keys)
+
+    for old_key in state_dict['model'].copy().keys():
+        new_key = old_key.replace(stdnt_prefix, '')
+        state_dict['model'][new_key] = state_dict['model'].pop(old_key)
+        
+    return state_dict
