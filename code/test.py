@@ -38,7 +38,7 @@ def main(args, vis):
 
     # Load checkpoint.
     if os.path.isfile(args.resume):
-        print('==> Resuming from checkpoint..')
+        print('==> Resuming from checkpoint at:', args.resume)
         checkpoint = torch.load(args.resume)
 
         if args.model_type == 'scratch':

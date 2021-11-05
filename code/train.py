@@ -281,6 +281,7 @@ def main(args):
 
     def save_model_checkpoint():
         if args.output_dir:
+            print("Saving at:", args.output_dir)
             checkpoint = {
                 'model': model_without_ddp.state_dict(),
                 'optimizer': optimizer.state_dict(),
