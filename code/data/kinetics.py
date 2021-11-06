@@ -94,12 +94,14 @@ class Kinetics400(VisionDataset):
 
         self.pretr_net = pretr_net
 
-        #torch.multiprocessing.set_start_method('spawn')
         
 
 
     def __len__(self):
         return self.video_clips.num_clips()
+
+
+
 
     def __getitem__(self, idx):
         success = False
@@ -117,40 +119,4 @@ class Kinetics400(VisionDataset):
         if self.transform is not None:
             video = self.transform(video)
 
-        start_time = time.time()
-
-        inp_video = torch.Tensor(video[1]).unsqueeze(0).permute(0,2,1,3,4).to('cpu') #.to('cuda')
-        # The input should be with shape B, C, T, H, W
-        feat_map_pretr = self.pretr_net(inp_video)
-
-        #print("encoder:", time.time() - start_time)
-
-        video_mask = []
-
-        # print(inp_video.shape, feat_map_pretr.shape)
-
-        start_time = time.time()
-
-        for t in range(feat_map_pretr.shape[2]):
-
-            feat_slic = feat_map_pretr.squeeze(0)[:, t, :, :].permute(1,2,0).detach().numpy().astype("double")
-            segments = slic(feat_slic, n_segments=15, compactness=10, sigma=5)
-            video_mask.append(segments)
-        
-        #print("SLIC:", time.time() - start_time)
-        
-        video_mask = torch.Tensor(video_mask)
-
-
-
-        # compute mask
-        # if self.sp_method != 'none':
-        #     video_mask = compute_mask(
-        #         torch.Tensor(
-        #             video[1]), self.sp_method, self.num_components, self.prob
-        #     )
-        # else:
-        #     video_mask = torch.empty(0)
-
-
-        return video, video_mask, audio, label
+        return video, audio, label

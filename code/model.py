@@ -138,6 +138,7 @@ class CRW(nn.Module):
         sp_mask has shape of T, h, w
         """
 
+
         curr_device = img_maps.device
 
         c, T, h, w = img.shape

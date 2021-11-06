@@ -32,7 +32,7 @@ from teacherstudent import CRWTeacherStudent
 ####################################################################################################
 
 def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, 
-                    epoch, print_freq, vis=None, checkpoint_fn=None, prob=None):
+                    epoch, print_freq, vis=None, checkpoint_fn=None, prob=None, model_pretr=None):
 
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -47,7 +47,12 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
 
     
 
-    for step, ((video, orig), sp_mask) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for step, (video, orig) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+
+        inp_video = torch.Tensor(orig).permute(0,2,1,3,4).to(device)
+        feat_map_pretr = model_pretr(inp_video)
+        sp_mask = segm_from_featmap(feat_map_pretr.squeeze(0).permute(0,2,3,4,1))
+
         start_time = time.time()
         
         max_sp_num = len(torch.unique(sp_mask))
@@ -86,6 +91,23 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
 # - collate_fn      : custom collate function for dataloader; removes audio from data samples
 ####################################################################################################
 
+
+def segm_from_featmap(feat_map, n_centr=4):
+
+    B, T, H, W, C = feat_map.shape
+    step_row = int(H/n_centr)
+    step_col = int(W/n_centr)
+
+    row_idx = torch.tensor(range(0, H, step_row), device='cuda')
+    col_idx = torch.tensor(range(0, W, step_col), device='cuda')
+
+    centroids = torch.index_select(torch.index_select(feat_map, 2, row_idx), 3, col_idx)
+    dist_mat = torch.cdist(feat_map.reshape(B, T, -1, C), centroids.reshape(B, T, -1, C))
+    segments = torch.argmin(dist_mat, dim=3).reshape(B, T, H, W).to(torch.int16)
+    
+    return segments
+    
+
 def _get_cache_path(filepath):
     import hashlib
     h = hashlib.sha1(filepath.encode()).hexdigest()
@@ -97,7 +119,7 @@ def _get_cache_path(filepath):
 
 def collate_fn(batch):
     # remove audio and labels from the batch
-    batch = [(d[0], d[1]) for d in batch]
+    batch = [d[0] for d in batch]
     return default_collate(batch)
 
 ####################################################################################################
@@ -132,11 +154,11 @@ def main(args):
 
     # Load Pretrained model to extract superpixel from it
     # pretr_net = resnet.resnet18()
-    model_pretr = CRW(args, vis=None).to('cpu')
+    model_pretr = CRW(args, vis=None).to('cuda')
     # pretr_net = utils.make_encoder(args).to(device)
     # checkpoint = torch.load('../pretrained.pth')
 
-    checkpoint = torch.load('../pretrained.pth', map_location='cpu')
+    checkpoint = torch.load('../pretrained.pth', map_location='cuda')
     utils.partial_load(checkpoint['model'], model_pretr)
 
     pretr_net = model_pretr.encoder
@@ -232,8 +254,8 @@ def main(args):
 
     data_loader = torch.utils.data.DataLoader(
         dataset, batch_size=args.batch_size,  # shuffle=not args.fast_test,
-        sampler=train_sampler, num_workers=args.workers//2, # 0 for the cpu
-        pin_memory=True, collate_fn=collate_fn)
+        sampler=train_sampler, num_workers=args.workers//2, # 0 for the cuda
+        pin_memory=True, collate_fn=collate_fn) # pin_memory=False for the cuda
 
     # Visualisation
     vis = utils.visualize.Visualize(args) if args.visualize else None
@@ -302,7 +324,7 @@ def main(args):
         train_one_epoch(model, optimizer, lr_scheduler, data_loader,
                         device, epoch, args.print_freq,
                         vis=vis, checkpoint_fn=save_model_checkpoint,
-                        prob=args.prob)
+                        prob=args.prob, model_pretr=pretr_net)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
