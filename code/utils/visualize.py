@@ -106,8 +106,10 @@ class Visualize(object):
     def wandb_init(self, model):
         if not self._init:
             self._init = True
-            wandb.init(project="video-contrastive",
-                       group="release", config=self.args)
+            wandb.init(entity="sapienzavideocontrastive", 
+                       project="parallel-latent-superpixels",
+                       group="prototyping", 
+                       config=self.args)
             wandb.watch(model)
 
     def log(self, key_vals):

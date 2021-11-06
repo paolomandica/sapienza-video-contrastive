@@ -3,11 +3,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import utils
-import skimage
 
+import skimage
 from skimage.util import img_as_float
+
 from utils import ZeroSoftmax
-import pdb
 
 EPS = 1e-20
 
@@ -131,6 +131,10 @@ class CRW(nn.Module):
 
         return feats, maps
 
+    #####
+    # Luca's Original Latent Superpixel Functions
+    ####
+
     def extract_sp_feat(self, img, img_maps, sp_mask):
         """
         img has shape of c, T, h, w
@@ -145,8 +149,6 @@ class CRW(nn.Module):
 
         final_feats = []
         final_segment = []
-
-        # pdb.set_trace()
 
         for t in range(T):
 
@@ -163,7 +165,6 @@ class CRW(nn.Module):
             final_segment.append(segments)
 
         return final_feats, final_segment
-
 
     def image_to_nodes(self, x, sp_mask, max_sp_num):
         """Inputs:
@@ -187,20 +188,15 @@ class CRW(nn.Module):
         seg_list = []
 
         for b in range(B):
-            ff, seg = self.extract_sp_feat(
-                x[b], maps[b], sp_mask[b, :, :, :])
+            ff, seg = self.extract_sp_feat(x[b], maps[b], sp_mask[b, :, :, :])
 
             ff_list.append(ff)
             seg_list.append(seg)
 
-        ff_tensor = torch.empty(
-            (0, T, max_sp_num, C), requires_grad=True, device="cuda"
-        )
+        ff_tensor = torch.empty((0, T, max_sp_num, C), requires_grad=True, device="cuda")
 
         for ff in ff_list:
-            ff_time_tensor = torch.empty(
-                (0, max_sp_num, C), requires_grad=True, device="cuda"
-            )
+            ff_time_tensor = torch.empty((0, max_sp_num, C), requires_grad=True, device="cuda")
 
             for sp_feats in ff:
                 temp_sp_feats = nn.functional.pad(
@@ -217,12 +213,76 @@ class CRW(nn.Module):
         # compute frame embeddings by spatially pooling frame feature maps
         # shape (B,T,SP,C) -> (B,SP,C,T)
         ff_tensor = ff_tensor.permute(0, 2, 3, 1)
-        ff_tensor = self.selfsim_fc(
-            ff_tensor.transpose(-1, -2)).transpose(-1, -2)
+        ff_tensor = self.selfsim_fc(ff_tensor.transpose(-1, -2)).transpose(-1, -2)
         ff_tensor = F.normalize(ff_tensor, p=2, dim=2)
         ff_tensor = ff_tensor.permute(0, 2, 3, 1)  # B, C, T, SP
 
         return ff_tensor, seg_list
+
+    ################################################################################
+    # Parallelised Functions
+    ################################################################################
+
+    def extract_sp_feat_parallel(self, img, img_maps, sp_mask):
+        """
+        img has shape of c, T, h, w # TODO This argument is not used for the latent superpixels method
+        img_maps has shape of C, T, H, W
+        sp_mask has shape of T, h, w
+        """
+
+        C, T, H, W = img_maps.shape
+
+        n_superpixels = len(torch.unique(sp_mask))
+        mask = (sp_mask.unsqueeze(1) == torch.unique(sp_mask)[None, :, None, None].expand(T, -1, H, W)).unsqueeze(0).expand(C, -1, -1, -1, -1)
+        img_maps_expanded = img_maps.unsqueeze(2).expand(-1, -1, n_superpixels, -1, -1)
+        img_maps_expanded[mask] = 0
+        final_feats = img_maps_expanded.sum(-1).sum(-1)
+        final_feats /= mask.sum(-1).sum(-1)
+        final_feats.permute(1, 2, 0)
+
+        # Batched
+
+        B, C, T, H, W = img_maps.shape
+
+        n_superpixels = len(torch.unique(sp_mask))
+        mask = (sp_mask.unsqueeze(2) == torch.unique(sp_mask)[None, None, :, None, None].expand(B, T, -1, H, W)).unsqueeze(0).expand(C, -1, -1, -1, -1)
+        img_maps_expanded = img_maps.unsqueeze(2).expand(-1, -1, n_superpixels, -1, -1)
+        img_maps_expanded[mask] = 0
+        final_feats = img_maps_expanded.sum(-1).sum(-1)
+        final_feats /= mask.sum(-1).sum(-1)
+        final_feats.permute(1, 2, 0)
+
+        return final_feats, None
+    
+    def image_to_nodes(self, x, superpixel_mask, max_sp_num):
+            """Inputs:
+                -- 'x' (B x C x T x h x w), batch of images
+            Outputs:
+                -- 'feats' (B x C x T x N), node embeddings
+                -- 'maps'  (B x C x T x H x W), node feature maps
+            """
+            B, T, c, h, w = x.shape
+            x = x.permute(0, 2, 1, 3, 4) # new shape after permute: B, c, T, h, w
+            maps = self.encoder(x)
+            B, C, T, H, W = maps.shape
+
+            if self.featdrop_rate > 0:
+                maps = self.featdrop(maps)
+
+            # superpixel_mask_1D = superpixel_mask[:, :, 0, :, :]
+            # ff_tensor = self.extract_sp_feat(x, maps, superpixel_mask_1D, max_sp_num)
+            # ff_tensor[ff_tensor.isnan()] = 0
+
+            ff_tensor = self.extract_sp_feat(x, maps, superpixel_mask, max_sp_num)
+
+            # compute frame embeddings by spatially pooling frame feature maps
+            # shape (B, T, SP, C) -> (B, SP, C, T)
+            ff_tensor = ff_tensor.permute(0, 2, 3, 1)
+            ff_tensor = self.selfsim_fc(ff_tensor.transpose(-1, -2)).transpose(-1, -2)
+            ff_tensor = F.normalize(ff_tensor, p=2, dim=2)
+            ff_tensor = ff_tensor.permute(0, 2, 3, 1)  # B, C, T, SP
+
+            return ff_tensor, None
 
     def forward(self, x, sp_mask, max_sp_num, just_feats=False):
         """
@@ -245,8 +305,14 @@ class CRW(nn.Module):
         else:
             # compute superpixels masks if not loaded
             q, mm = self.image_to_nodes(x, sp_mask, max_sp_num)
+            
+        # Prototyping    
+            q_parallel, mm_parallel = self.image_to_nodes_parallel(x, sp_mask, max_sp_num)
+            print((q == q_parallel).all()) # Should return True
+        breakpoint()
 
         assert q is not None
+
         B, C, T, N = q.shape
 
         if just_feats:
