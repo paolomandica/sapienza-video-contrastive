@@ -32,7 +32,7 @@ from teacherstudent import CRWTeacherStudent
 ####################################################################################################
 
 def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, 
-                    epoch, print_freq, vis=None, checkpoint_fn=None, prob=None):
+                    epoch, print_freq, vis=None, checkpoint_fn=None, prob=None, model_pretr=None):
 
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -45,37 +45,87 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
     if vis is not None:
         vis.wandb_init(model)
 
-    
-
-    for step, ((video, orig), sp_mask) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for step, (video, orig) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         start_time = time.time()
         
-        max_sp_num = len(torch.unique(sp_mask))
-        orig = orig.to(device)
-        sp_mask = sp_mask.to(device)
+        ################################################################################
+        # Original Model
+        ################################################################################
 
-        output, loss, diagnostics = model(orig, sp_mask, max_sp_num)
+        # max_sp_num = len(torch.unique(sp_mask))
+        # orig = orig.to(device)
+        # sp_mask = sp_mask.to(device)
+
+        # output, loss, diagnostics = model(orig, sp_mask, max_sp_num)
         
+        # loss = loss.mean()
+
+        # # if vis is not None and np.random.random() < 0.01:
+        # if vis is not None:
+        #     vis.log(dict(loss=loss.mean().item()))
+        #     vis.log({k: v.mean().item() for k, v in diagnostics.items()})
+
+        # # NOTE Stochastic checkpointing has been retained
+        # if checkpoint_fn is not None and np.random.random() < 0.005:
+        #     checkpoint_fn()
+
+        # optimizer.zero_grad()
+        # loss.backward()
+        # # print(torch.nn.utils.clip_grad_norm_(model.parameters(), 1), 'grad norm')
+        # optimizer.step()
+
+        # metric_logger.update(loss=loss.item(), lr=optimizer.param_groups[0]["lr"])
+        # metric_logger.meters['clips/s'].update(video.shape[0] / (time.time() - start_time))
+        # lr_scheduler.step()
+
+        ################################################################################
+        # Parallel Model
+        ################################################################################
+
+        inp_video = torch.Tensor(orig).permute(0,2,1,3,4).to(device)
+        feat_map_pretr = model_pretr(inp_video)
+        sp_mask = segm_from_featmap(feat_map_pretr.squeeze(0).permute(0,2,3,4,1))
+
+        # forward with patches
+        video = video.to(device)
+        output, loss, diagnostics = model(video, None, None)
+
+        # forward with superpixels
+        sp_mask = sp_mask.to(device)
+        max_sp_num = len(torch.unique(sp_mask))
+        output_sp, loss_sp, diagnostics_sp = model(orig, sp_mask, max_sp_num)
+
         loss = loss.mean()
+        loss_sp = loss_sp.mean()
+        a = prob
+        loss_sum = a*loss + (1-a)*loss_sp
 
-        # if vis is not None and np.random.random() < 0.01:
-        if vis is not None:
-            vis.log(dict(loss=loss.mean().item()))
-            vis.log({k: v.mean().item() for k, v in diagnostics.items()})
+        diagnostics_dict = dict()
+        items = list(diagnostics.items()) + list(diagnostics_sp.items())
+        
+        for k, v in items:
+            if k not in diagnostics_dict:
+                diagnostics_dict[k] = v
+            else:
+                diagnostics_dict[k] = torch.cat([diagnostics_dict[k], v])
 
-        # NOTE Stochastic checkpointing has been retained
+        if vis is not None and np.random.random() < 0.1:
+            vis.log(dict(loss=loss_sum.mean().item()))
+            vis.log({k: v.mean().item() for k, v in diagnostics_dict.items()})
+
         if checkpoint_fn is not None and np.random.random() < 0.005:
             checkpoint_fn()
 
         optimizer.zero_grad()
-        loss.backward()
-        # print(torch.nn.utils.clip_grad_norm_(model.parameters(), 1), 'grad norm')
+        loss_sum.backward()
         optimizer.step()
 
-        metric_logger.update(loss=loss.item(), lr=optimizer.param_groups[0]["lr"])
-        metric_logger.meters['clips/s'].update(video.shape[0] / (time.time() - start_time))
-        lr_scheduler.step()
+        metric_logger.update(loss=loss_sum.item(), 
+                             lr=optimizer.param_groups[0]["lr"])
 
+        metric_logger.meters['clips/s'].update(video.shape[0] / (time.time() - start_time))
+        
+        lr_scheduler.step()
 
 
     checkpoint_fn()
@@ -85,6 +135,21 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
 # - _get_cache_path : get cache path for automatic caching of train dataset
 # - collate_fn      : custom collate function for dataloader; removes audio from data samples
 ####################################################################################################
+
+def segm_from_featmap(feat_map, n_centr=4):
+
+    B, T, H, W, C = feat_map.shape
+    step_row = int(H/n_centr)
+    step_col = int(W/n_centr)
+
+    row_idx = torch.tensor(range(0, H, step_row), device='cuda')
+    col_idx = torch.tensor(range(0, W, step_col), device='cuda')
+
+    centroids = torch.index_select(torch.index_select(feat_map, 2, row_idx), 3, col_idx)
+    dist_mat = torch.cdist(feat_map.reshape(B, T, -1, C), centroids.reshape(B, T, -1, C))
+    segments = torch.argmin(dist_mat, dim=3).reshape(B, T, H, W).to(torch.int16)
+    
+    return segments
 
 def _get_cache_path(filepath):
     import hashlib
@@ -97,7 +162,7 @@ def _get_cache_path(filepath):
 
 def collate_fn(batch):
     # remove audio and labels from the batch
-    batch = [(d[0], d[1]) for d in batch]
+    batch = [d[0] for d in batch]
     return default_collate(batch)
 
 ####################################################################################################
@@ -129,36 +194,17 @@ def main(args):
 
     transform_train = utils.augs.get_train_transforms(args)
 
-
+    
     # Load Pretrained model to extract superpixel from it
     # pretr_net = resnet.resnet18()
-    model_pretr = CRW(args, vis=None).to('cpu')
+    model_pretr = CRW(args, vis=None).to('cuda')
     # pretr_net = utils.make_encoder(args).to(device)
     # checkpoint = torch.load('../pretrained.pth')
 
-    checkpoint = torch.load('../pretrained.pth', map_location='cpu')
+    checkpoint = torch.load('../pretrained.pth', map_location='cuda')
     utils.partial_load(checkpoint['model'], model_pretr)
 
     pretr_net = model_pretr.encoder
-
-    # pdb.set_trace()
-
-
-    # state = {}
-    # for k,v in checkpoint['model'].items():
-    #     if 'conv1.1.weight' in k or 'conv2.1.weight' in k:
-    #         state[k.replace('.1.weight', '.weight')] = v
-    #     elif "encoder.model" in k:
-    #         new_k = k.replace('encoder.model.', '')
-    #         state[new_k] = v
-    #     else:
-    #         state[k] = v
-
-    # utils.partial_load(state, pretr_net, skip_keys=['head'])
-
-    
-
-
 
     # Dataset
     def make_dataset(is_train, cached=None):
@@ -176,8 +222,7 @@ def main(args):
                 _precomputed_metadata=cached,
                 sp_method=args.sp_method,
                 num_components=args.num_sp,
-                prob=args.prob,
-                pretr_net=pretr_net
+                prob=args.prob
             )
         # HACK assume image dataset if data path is a directory
         elif os.path.isdir(args.data_path):
@@ -302,7 +347,7 @@ def main(args):
         train_one_epoch(model, optimizer, lr_scheduler, data_loader,
                         device, epoch, args.print_freq,
                         vis=vis, checkpoint_fn=save_model_checkpoint,
-                        prob=args.prob)
+                        prob=args.prob, model_pretr=pretr_net)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))

@@ -108,7 +108,7 @@ class Visualize(object):
             self._init = True
             wandb.init(entity="sapienzavideocontrastive", 
                        project="parallel-latent-superpixels",
-                       group="prototyping", 
+                       group="release", 
                        config=self.args)
             wandb.watch(model)
 
