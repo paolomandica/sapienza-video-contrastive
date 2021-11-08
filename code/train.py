@@ -82,9 +82,9 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
         # Parallel Model
         ################################################################################
 
-        inp_video = torch.Tensor(orig).permute(0,2,1,3,4).to(device)
+        inp_video = torch.Tensor(orig).permute(0, 2, 1, 3, 4).to(device)
         feat_map_pretr = model_pretr(inp_video)
-        sp_mask = segm_from_featmap(feat_map_pretr.squeeze(0).permute(0,2,3,4,1))
+        sp_mask = segm_from_featmap(feat_map_pretr.squeeze(0).permute(0, 2, 3, 4, 1))
 
         # forward with patches
         video = video.to(device)

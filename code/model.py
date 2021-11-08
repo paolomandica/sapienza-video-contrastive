@@ -131,108 +131,17 @@ class CRW(nn.Module):
 
         return feats, maps
 
-    ################################################################################
-    # Luca's Original Latent Superpixel Functions
-    ################################################################################
+    def image_to_nodes(self, x, sp_mask):
+        '''
+        maps -> superpixel node embeddings
 
-    def extract_sp_feat(self, img, img_maps, sp_mask):
-        """
-        img has shape of c, T, h, w
-        img_maps has shape of C, T, H, W
-        sp_mask has shape of T, h, w
-        """
-
-        curr_device = img_maps.device
-
-        c, T, h, w = img.shape
-        C, T, H, W = img_maps.shape
-
-        final_feats = []
-        final_segment = []
-
-        for t in range(T):
-
-            feat_maps = img_maps[:, t, :, :]
-            segments = sp_mask[t]
-
-            # Aggregate features (averaging) from the same superpixel
-            segments_feat = torch.empty(0, img_maps.shape[0], device=curr_device)
-
-            for sp in torch.unique(segments):
-                segments_feat = torch.cat((segments_feat, torch.mean(feat_maps[:, segments==sp], dim=-1).unsqueeze(0)))
-            
-            final_feats.append(segments_feat)
-            final_segment.append(segments)
-
-        return final_feats, final_segment
-
-
-    def image_to_nodes(self, x, sp_mask, max_sp_num):
-        """Inputs:
-            -- 'x' (B x C x T x h x w), batch of images
+        Inputs:
+            -- 'x' (B x T x c x h x w), batch of images (video)
+            -- 'sp_mask' (B x T x H x W), batch of superpixel masks
         Outputs:
-            -- 'feats' (B x C x T x N), node embeddings
-            -- 'maps'  (B x C x T x H x W), node feature maps
-        """
-
-        B, T, c, h, w = x.shape
-        x = x.permute(0, 2, 1, 3, 4)  # New shape B, c, T, h, w
-        maps = self.encoder(x)
-
-        B, C, T, H, W = maps.shape
-        N = max_sp_num
-
-        if self.featdrop_rate > 0:
-            maps = self.featdrop(maps)
-
-        ff_list = []
-        seg_list = []
-
-        for b in range(B):
-            ff, seg = self.extract_sp_feat(
-                x[b], maps[b], sp_mask[b, :, :, :])
-
-            ff_list.append(ff)
-            seg_list.append(seg)
-
-        ff_tensor = torch.empty(
-            (0, T, max_sp_num, C), requires_grad=True, device="cuda"
-        )
-
-        for ff in ff_list:
-            ff_time_tensor = torch.empty(
-                (0, max_sp_num, C), requires_grad=True, device="cuda"
-            )
-
-            for sp_feats in ff:
-                temp_sp_feats = nn.functional.pad(
-                    sp_feats,
-                    pad=(0, 0, 0, max_sp_num - sp_feats.shape[0]),
-                    mode="constant",
-                ).unsqueeze(0)
-                ff_time_tensor = torch.cat(
-                    (ff_time_tensor, temp_sp_feats), dim=0)
-
-            ff_tensor = torch.cat(
-                (ff_tensor, ff_time_tensor.unsqueeze(0)), dim=0)
-
-        # compute frame embeddings by spatially pooling frame feature maps
-        # shape (B,T,SP,C) -> (B,SP,C,T)
-        ff_tensor = ff_tensor.permute(0, 2, 3, 1)
-        ff_tensor = self.selfsim_fc(
-            ff_tensor.transpose(-1, -2)).transpose(-1, -2)
-        ff_tensor = F.normalize(ff_tensor, p=2, dim=2)
-        ff_tensor = ff_tensor.permute(0, 2, 3, 1)  # B, C, T, SP
-
-        return ff_tensor, seg_list
-
-    def image_to_nodes_parallel(self, x, sp_mask):
-        """Inputs:
-            -- 'x' (B x C x T x h x w), batch of images
-        Outputs:
-            -- 'feats' (B x C x T x N), node embeddings
-            -- 'maps'  (B x C x T x H x W), node feature maps
-        """
+            -- 'feats' (B, C, T, SP), superpixel node embeddings
+            -- 'maps'  (B x C x T x H x W), frame feature maps
+        '''
 
         B, T, c, h, w = x.shape
         x = x.permute(0, 2, 1, 3, 4)  # New shape B, c, T, h, w
@@ -259,9 +168,9 @@ class CRW(nn.Module):
         sp_feats = F.normalize(sp_feats, p=2, dim=3) # [8, 16, 4, 128]
 
         # Swap latent channel and superpixel dimensions # [8, 128, 4, 16], i.e. B, C, T, SP
-        sp_feats = sp_feats.transpose(3, 1) 
+        sp_feats = sp_feats.transpose(3, 1)
 
-        return sp_feats
+        return sp_feats, maps
 
     def forward(self, x, sp_mask, max_sp_num, just_feats=False):
         """
@@ -269,27 +178,21 @@ class CRW(nn.Module):
            N>1 -> list of patches of images
            N=1 -> list of images
         """
+        
         B, T, C, H, W = x.shape
 
         #################################################################
         # Image/Pixels to Nodes
         #################################################################
 
-        q = None
-        if sp_mask == None:
-            # use patches
+        if sp_mask is None:
+            # Patches
             _N, C = C // 3, 3
             x = x.transpose(1, 2).view(B, _N, C, T, H, W)
             q, mm = self.pixels_to_nodes(x)
         else:
-            # compute superpixels masks if not loaded
-            q, mm = self.image_to_nodes(x, sp_mask, max_sp_num)
-            _q = self.image_to_nodes_parallel(x, sp_mask)
-
-            print(torch.isclose(q, _q, atol=1e-7).all())
-            breakpoint()
-
-        assert q is not None
+            # Superpixels
+            q, mm = self.image_to_nodes(x, sp_mask)
 
         B, C, T, N = q.shape
 
@@ -308,41 +211,18 @@ class CRW(nn.Module):
         A12s = [self.stoch_mat(As[:, i], do_dropout=True)
                 for i in range(T - 1)]
 
-        # # Palindromes
-        if not self.sk_targets:
-            A21s = [
-                self.stoch_mat(As[:, i].transpose(-1, -2), do_dropout=True)
-                for i in range(T - 1)
-            ]
-            AAs = []
-            for i in list(range(1, len(A12s))):
-                g = A12s[: i + 1] + A21s[: i + 1][::-1]
-                aar = aal = g[0]
-                for _a in g[1:]:
-                    aar, aal = aar @ _a, _a @ aal
+        # Palindromes
+        A21s = [self.stoch_mat(As[:, i].transpose(-1, -2), do_dropout=True) for i in range(T - 1)]
+        AAs = []
+        for i in list(range(1, len(A12s))):
+            g = A12s[: i + 1] + A21s[: i + 1][::-1]
+            aar = aal = g[0]
+            for _a in g[1:]:
+                aar, aal = aar @ _a, _a @ aal
+            AAs.append((f"l{i}", aal) if self.flip else (f"r{i}", aar))
 
-                AAs.append((f"l{i}", aal) if self.flip else (f"r{i}", aar))
-
-            for i, aa in AAs:
-                walks[f"cyc {i}"] = [aa, self.xent_targets(aa)]
-
-        # Sinkhorn-Knopp Target (experimental)
-        else:
-            a12, at = A12s[0], self.stoch_mat(
-                A[:, 0], do_dropout=False, do_sinkhorn=True
-            )
-            for i in range(1, len(A12s)):
-                a12 = a12 @ A12s[i]
-                at = self.stoch_mat(
-                    As[:, i], do_dropout=False, do_sinkhorn=True) @ at
-                with torch.no_grad():
-                    targets = (
-                        utils.sinkhorn_knopp(
-                            at, tol=0.001, max_iter=10, verbose=False)
-                        .argmax(-1)
-                        .flatten()
-                    )
-                walks[f"sk {i}"] = [a12, targets]
+        for i, aa in AAs:
+            walks[f"cyc {i}"] = [aa, self.xent_targets(aa)]
 
         #################################################################
         # Compute loss
