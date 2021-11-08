@@ -88,12 +88,12 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
 
         # forward with patches
         video = video.to(device)
-        output, loss, diagnostics = model(video, None, None)
+        output, loss, diagnostics = model(video, None)
 
         # forward with superpixels
         sp_mask = sp_mask.to(device)
         max_sp_num = len(torch.unique(sp_mask))
-        output_sp, loss_sp, diagnostics_sp = model(orig, sp_mask, max_sp_num)
+        output_sp, loss_sp, diagnostics_sp = model(orig, sp_mask)
 
         loss = loss.mean()
         loss_sp = loss_sp.mean()

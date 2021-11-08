@@ -172,7 +172,7 @@ class CRW(nn.Module):
 
         return sp_feats, maps
 
-    def forward(self, x, sp_mask, max_sp_num, just_feats=False):
+    def forward(self, x, sp_mask, just_feats=False):
         """
         Input is B x T x N*C x H x W, where either
            N>1 -> list of patches of images
