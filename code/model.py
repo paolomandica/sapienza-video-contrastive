@@ -150,8 +150,6 @@ class CRW(nn.Module):
         final_feats = []
         final_segment = []
 
-        # pdb.set_trace()
-
         for t in range(T):
 
             feat_maps = img_maps[:, t, :, :]
@@ -228,42 +226,42 @@ class CRW(nn.Module):
 
         return ff_tensor, seg_list
 
-    ################################################################################
-    # Parallelised Functions
-    ################################################################################
-    
-    # def image_to_nodes_parallel(self, x, superpixel_mask):
-    #     """Inputs:
-    #         -- 'x' (B x C x T x h x w), batch of images
-    #     Outputs:
-    #         -- 'feats' (B x C x T x N), node embeddings
-    #         -- 'maps'  (B x C x T x H x W), node feature maps
-    #     """
-    #     B, T, c, h, w = x.shape
-    #     x = x.permute(0, 2, 1, 3, 4) # new shape after permute: B, c, T, h, w
-    #     maps = self.encoder(x)
-    #     B, C, T, H, W = maps.shape
+    def image_to_nodes_parallel(self, x, sp_mask):
+        """Inputs:
+            -- 'x' (B x C x T x h x w), batch of images
+        Outputs:
+            -- 'feats' (B x C x T x N), node embeddings
+            -- 'maps'  (B x C x T x H x W), node feature maps
+        """
 
-    #     if self.featdrop_rate > 0:
-    #         maps = self.featdrop(maps)
+        B, T, c, h, w = x.shape
+        x = x.permute(0, 2, 1, 3, 4)  # New shape B, c, T, h, w
+        maps = self.encoder(x)
 
-    #     n_superpixels = len(torch.unique(superpixel_mask))
-    #     mask = (superpixel_mask.unsqueeze(2) == torch.unique(superpixel_mask)[None, None, :, None, None].expand(B, T, -1, H, W)).unsqueeze(1).expand(-1, C, -1, -1, -1, -1)
-    #     maps_expanded = maps.unsqueeze(3).expand(-1, -1, -1, n_superpixels, -1, -1)
-    #     final_feats = maps_expanded.sum(-1).sum(-1)
-    #     final_feats /= mask.sum(-1).sum(-1)
+        B, C, T, H, W = maps.shape
 
-    #     final_feats.permute(0, 2, 3, 1)
-                    
-    #     # compute frame embeddings by spatially pooling frame feature maps
-    #     # shape (B, T, SP, C) -> (B, SP, C, T)
-    #     final_feats = final_feats.permute(0, 3, 2, 1)
+        # Regularise via dropped features (optional)
+        if self.featdrop_rate > 0:
+            maps = self.featdrop(maps)
 
-    #     final_feats = self.selfsim_fc(final_feats).transpose(-1, -2)
-    #     final_feats = F.normalize(final_feats, p=2, dim=2)
-    #     final_feats = final_feats.permute(0, 2, 3, 1)  # B, C, T, SP
+        # Create a "one-hot", 0 / 1 mask from the dense-coded sp_mask 
+        mask = (sp_mask.unsqueeze(2) == torch.unique(sp_mask)[None, None, :, None, None]) 
+        mask = mask.unsqueeze(1).int() # [8, 1, 4, 16, 32, 32]
+        
+        # Compute superpixel features as the mean of their 512-D, latent-space feature vectors
+        img_maps_expanded = maps.unsqueeze(3) # [8, 512, 4, 1, 32, 32]
+        sp_feats = img_maps_expanded * mask # [8, 512, 4, 16, 32, 32]
+        sp_feats = sp_feats.sum(-1).sum(-1) / mask.sum(-1).sum(-1) # [8, 512, 4, 16]
 
-    #     return final_feats, None
+        # Apply selfsim_fc projection head to reduce latent dimensionality 512 -> 128 and normalise
+        sp_feats = sp_feats.transpose(3, 1) # permute to [8, 16, 4, 512], i.e. [B, SP, T, C]
+        sp_feats = self.selfsim_fc(sp_feats) # [8, 16, 4, 128]
+        sp_feats = F.normalize(sp_feats, p=2, dim=3) # [8, 16, 4, 128]
+
+        # Swap latent channel and superpixel dimensions # [8, 128, 4, 16], i.e. B, C, T, SP
+        sp_feats = sp_feats.transpose(3, 1) 
+
+        return sp_feats
 
     def forward(self, x, sp_mask, max_sp_num, just_feats=False):
         """
@@ -286,6 +284,10 @@ class CRW(nn.Module):
         else:
             # compute superpixels masks if not loaded
             q, mm = self.image_to_nodes(x, sp_mask, max_sp_num)
+            _q = self.image_to_nodes_parallel(x, sp_mask)
+
+            print(torch.isclose(q, _q, atol=1e-7).all())
+            breakpoint()
 
         assert q is not None
 
