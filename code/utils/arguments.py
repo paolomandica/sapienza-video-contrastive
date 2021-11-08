@@ -192,7 +192,7 @@ def train_args():
     parser.add_argument('--num-sp', default=30, type=int,
                         help='number of components for SLIC')
     parser.add_argument('--prob', default=1.0, type=float,
-                        help='sampling probability of patches or superpixels')
+                        help='sampling probability of patches or superpixels. 1 for patches; 0 for superpixels')
 
     # Teacher-Student
     parser.add_argument('--teacher-student', default=False, action='store_true',
