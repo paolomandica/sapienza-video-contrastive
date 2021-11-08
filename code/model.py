@@ -38,17 +38,10 @@ class CRW(nn.Module):
 
     def infer_dims(self):
         in_sz = 256
-        dummy = torch.zeros(1, 3, 1, in_sz, in_sz).to(
-            next(self.encoder.parameters()).device
-        )
+        dummy = torch.zeros(1, 3, 1, in_sz, in_sz).to(next(self.encoder.parameters()).device)
         dummy_out = self.encoder(dummy)
         self.enc_hid_dim = dummy_out.shape[1]
         self.map_scale = in_sz // dummy_out.shape[-1]
-        out = self.encoder(
-            torch.zeros(1, 3, 1, 320, 320).to(
-                next(self.encoder.parameters()).device)
-        )
-        # scale = out[1].shape[-2:]
 
     def make_head(self, depth=1):
         head = []
@@ -91,9 +84,10 @@ class CRW(nn.Module):
             A[torch.rand_like(A) < self.edgedrop_rate] = -1e20
 
         if do_sinkhorn:
-            return utils.sinkhorn_knopp(
-                (A / self.temperature).exp(), tol=0.01, max_iter=100, verbose=False
-            )
+            return utils.sinkhorn_knopp((A / self.temperature).exp(), 
+                                        tol=0.01, 
+                                        max_iter=100, 
+                                        verbose=False)
 
         # return F.softmax(A / self.temperature, dim=-1)
         return self.zero_softmax(A / self.temperature, dim=-1)
@@ -155,12 +149,20 @@ class CRW(nn.Module):
 
         # Create a "one-hot", 0 / 1 mask from the dense-coded sp_mask 
         mask = (sp_mask.unsqueeze(2) == torch.unique(sp_mask)[None, None, :, None, None]) 
+        # mask = (sp_mask.unsqueeze(2) == torch.arange(16)[None, None, :, None, None]) 
         mask = mask.unsqueeze(1).int() # [8, 1, 4, 16, 32, 32]
         
         # Compute superpixel features as the mean of their 512-D, latent-space feature vectors
         img_maps_expanded = maps.unsqueeze(3) # [8, 512, 4, 1, 32, 32]
         sp_feats = img_maps_expanded * mask # [8, 512, 4, 16, 32, 32]
-        sp_feats = sp_feats.sum(-1).sum(-1) / mask.sum(-1).sum(-1) # [8, 512, 4, 16]
+        
+        # Checks for instances of superpixel masks which do not have populated superpixels
+        #   in every batch and time slice
+        # assert (mask.sum(-1).sum(-1) != 0).all(), "There are superpixels of size 0"
+        # if not (mask.sum(-1).sum(-1) != 0).all():
+        #     breakpoint()
+            
+        sp_feats = sp_feats.sum(-1).sum(-1) / (mask.sum(-1).sum(-1) + EPS) # [8, 512, 4, 16]
 
         # Apply selfsim_fc projection head to reduce latent dimensionality 512 -> 128 and normalise
         sp_feats = sp_feats.transpose(3, 1) # permute to [8, 16, 4, 512], i.e. [B, SP, T, C]

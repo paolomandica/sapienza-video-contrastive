@@ -20,9 +20,9 @@ import utils
 from model import CRW
 import resnet
 
-import pdb
-
 from teacherstudent import CRWTeacherStudent
+
+torch.autograd.set_detect_anomaly(True)
 
 # Disable wandb syncing to the cloud
 # os.environ['WANDB_MODE'] = 'offline'
@@ -86,19 +86,19 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
         feat_map_pretr = model_pretr(inp_video)
         sp_mask = segm_from_featmap(feat_map_pretr.squeeze(0).permute(0, 2, 3, 4, 1))
 
-        # forward with patches
+        # assert (torch.max(torch.max(sp_mask, dim=-1)[0], dim=-1)[0] == 15).all(), "Dataloader problems"
+
+        # Patches
         video = video.to(device)
         output, loss, diagnostics = model(video, None)
 
-        # forward with superpixels
+        # Superpixels
         sp_mask = sp_mask.to(device)
-        max_sp_num = len(torch.unique(sp_mask))
         output_sp, loss_sp, diagnostics_sp = model(orig, sp_mask)
 
         loss = loss.mean()
         loss_sp = loss_sp.mean()
-        a = prob
-        loss_sum = a*loss + (1-a)*loss_sp
+        loss_sum = prob*loss + (1-prob)*loss_sp
 
         diagnostics_dict = dict()
         items = list(diagnostics.items()) + list(diagnostics_sp.items())
@@ -126,7 +126,6 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
         metric_logger.meters['clips/s'].update(video.shape[0] / (time.time() - start_time))
         
         lr_scheduler.step()
-
 
     checkpoint_fn()
 
@@ -282,9 +281,6 @@ def main(args):
 
     # Visualisation
     vis = utils.visualize.Visualize(args) if args.visualize else None
-
-    
-
 
     # Model
     print("Creating model", end="\n"+"-"*100+"\n")
