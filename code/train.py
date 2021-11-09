@@ -18,6 +18,7 @@ from torchvision.datasets.samplers.clip_sampler import RandomClipSampler, Unifor
 
 import utils
 from model import CRW
+from modelparallelise import CRW as CRW_GPU
 
 from teacherstudent import CRWTeacherStudent
 
