@@ -3,11 +3,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import utils
-import skimage
 
+import skimage
 from skimage.util import img_as_float
-from utils import ZeroSoftmax
-import pdb
+
+from utils import ZeroSoftmax, view_as_windows
 
 EPS = 1e-20
 
@@ -18,8 +18,7 @@ class CRW(nn.Module):
 
         self.edgedrop_rate = getattr(args, "dropout", 0)
         self.featdrop_rate = getattr(args, "featdrop", 0)
-        self.temperature = getattr(
-            args, "temp", getattr(args, "temperature", 0.07))
+        self.temperature = getattr(args, "temp", getattr(args, "temperature", 0.07))
 
         self.encoder = utils.make_encoder(args).to(self.args.device)
         self.infer_dims()
@@ -38,17 +37,10 @@ class CRW(nn.Module):
 
     def infer_dims(self):
         in_sz = 256
-        dummy = torch.zeros(1, 3, 1, in_sz, in_sz).to(
-            next(self.encoder.parameters()).device
-        )
+        dummy = torch.zeros(1, 3, 1, in_sz, in_sz).to(next(self.encoder.parameters()).device)
         dummy_out = self.encoder(dummy)
         self.enc_hid_dim = dummy_out.shape[1]
         self.map_scale = in_sz // dummy_out.shape[-1]
-        out = self.encoder(
-            torch.zeros(1, 3, 1, 320, 320).to(
-                next(self.encoder.parameters()).device)
-        )
-        # scale = out[1].shape[-2:]
 
     def make_head(self, depth=1):
         head = []
@@ -63,11 +55,10 @@ class CRW(nn.Module):
 
     def zeroout_diag(self, A, zero=0):
         mask = (
-            (torch.eye(
-                A.shape[-1]).unsqueeze(0).repeat(A.shape[0], 1, 1).bool() < 1)
+            (torch.eye(A.shape[-1]).unsqueeze(0).repeat(A.shape[0], 1, 1).bool() < 1)
             .float()
             .cuda()
-        )
+            )
         return A * mask
 
     def affinity(self, x1, x2):
@@ -91,9 +82,10 @@ class CRW(nn.Module):
             A[torch.rand_like(A) < self.edgedrop_rate] = -1e20
 
         if do_sinkhorn:
-            return utils.sinkhorn_knopp(
-                (A / self.temperature).exp(), tol=0.01, max_iter=100, verbose=False
-            )
+            return utils.sinkhorn_knopp((A / self.temperature).exp(), 
+                                        tol=0.01, 
+                                        max_iter=100, 
+                                        verbose=False)
 
         # return F.softmax(A / self.temperature, dim=-1)
         return self.zero_softmax(A / self.temperature, dim=-1)
@@ -131,7 +123,11 @@ class CRW(nn.Module):
 
         return feats, maps
 
-    def extract_sp_feat(self, img, img_maps, sp_mask):
+    ############################################################
+    # CPU Superpixel functions - Retained for reference
+    ############################################################
+
+    def extract_sp_feat_cpu(self, img, img_maps, sp_mask):
         """
         img has shape of c, T, h, w
         img_maps has shape of C, T, H, W
@@ -200,7 +196,7 @@ class CRW(nn.Module):
 
         return final_feats, final_segment
 
-    def image_to_nodes(self, x, sp_mask, max_sp_num):
+    def image_to_nodes_cpu(self, x, sp_mask, max_sp_num):
         """Inputs:
             -- 'x' (B x C x T x h x w), batch of images
         Outputs:
@@ -221,7 +217,7 @@ class CRW(nn.Module):
         seg_list = []
 
         for b in range(B):
-            ff, seg = self.extract_sp_feat(
+            ff, seg = self.extract_sp_feat_cpu(
                 x[b], maps[b], sp_mask[b, :, 0, :, :])
 
             ff_list.append(ff)
@@ -258,6 +254,72 @@ class CRW(nn.Module):
 
         return ff_tensor, seg_list
 
+    ############################################################
+    # Parallelised (GPU) Superpixels
+    ############################################################
+
+    def image_to_nodes(self, x, sp_mask, max_sp_num):
+        """ 
+        Compute superpixel node representations by spatially average pooling feature maps within 
+        superpixels.
+        
+        In summary: video + superpixel mask -> superpixel node embeddings
+
+        Inputs:
+            -- 'x' (B x T x c x h x w), video (frame image sequence)
+            -- 'sp_mask' (B x T x c x h x w), dense superpixel maks; integers 0, ..., (max_sp_num-1)
+            -- 'max_sp_num' (int), maximum number of superpixels used (value passed to segmentation algo)
+        Outputs:
+            # -- 'sp_feats' (B x C_reduced x T x N), superpixel node embeddings
+            # -- 'maps'  (B x C x T x H x W), video (frame) feature maps
+
+        Notes
+        -----
+
+        C_reduced above refers to the reduced latent-space dimensionality of the
+        superpixel node representations (sp_feats) after being passed through the
+        projection head (selfsim_fc). 
+        """
+        
+        # Compute frame feature maps using encoder
+        B, T, c, h, w = x.shape
+        x = x.transpose(1, 2) # swap T(ime) and c(hannel) dimensions
+        maps = self.encoder(x)
+        _B, C, _T, H, W = maps.shape
+
+        # Regularise by dropping frame features (optional)
+        if self.featdrop_rate > 0:
+            maps = self.featdrop(maps)
+
+        # Number of superpixels present in each mask; (B, T); (8, 4). Useful for downstream checks
+        # n_superpixels = torch.max(sp_mask.flatten(2,3), dim=2)[0]
+
+        # Make sp_mask "one-hot" from dense, with a new SP dimension;  B, T, SP, h, w
+        sp_mask = sp_mask[:, :, 0, :, :] # NOTE Segmentation (e.g. SLIC) returns a 3-channel mask 
+        idxs_sp = torch.arange(max_sp_num, device=self.args.device)[None, :, None, None]
+        sp_mask = (sp_mask.unsqueeze(2) == idxs_sp).int() # NOTE sp_mask broadcasts over SP dimension
+
+        # Create a weighted superpixel mask to apply to feature maps
+        # NOTE window_shape is (B, T, SP, h//H, w//W)
+        window_shape, window_step = (*sp_mask.shape[:3], h//H, w//W), h // H
+        sp_mask_wndws = view_as_windows(sp_mask, window_shape, step=window_step)[0, 0, 0] # drop singleton dims
+        sp_mask_wndws = sp_mask_wndws.sum(-1).sum(-1) # sum over windows h//H and w//W
+        sp_mask_wndws = sp_mask_wndws.permute(2, 3, 0, 1, 4) # (H, W, B, T, SP) -> (B, T, H, W, SP)
+        sp_mask_wndws = sp_mask_wndws / (sp_mask.sum(-1).sum(-1) + EPS)[:, :, None, None, :] # normalise mask by SP sizes
+        sp_mask_wndws = sp_mask_wndws.unsqueeze(4)
+
+        # Compute superpixel node embeddings by multiplying feature maps by weighted mask
+        img_map_expanded = maps.permute(0, 2, 3, 4, 1).unsqueeze(-1)
+        sp_feats = sp_mask_wndws * img_map_expanded
+        sp_feats = sp_feats.sum(2).sum(2).permute(0, 3, 1, 2)
+
+        # Reduce latent dimensionality of superpixel nodes via projection head
+        sp_feats = self.selfsim_fc(sp_feats)
+        sp_feats = F.normalize(sp_feats, p=2, dim=3)
+        sp_feats = sp_feats.permute(0, 3, 2, 1)  # B, C, T, SP
+
+        return sp_feats, maps
+
     def forward(self, x, sp_mask, max_sp_num, just_feats=False):
         """
         Input is B x T x N*C x H x W, where either
@@ -270,73 +332,48 @@ class CRW(nn.Module):
         # Image/Pixels to Nodes
         #################################################################
 
-        q = None
-        if sp_mask == None:
-            # use patches
+        if sp_mask is None:
+            # Patches
             _N, C = C // 3, 3
             x = x.transpose(1, 2).view(B, _N, C, T, H, W)
             q, mm = self.pixels_to_nodes(x)
         else:
-            # compute superpixels masks if not loaded
+            # Superpixels
             q, mm = self.image_to_nodes(x, sp_mask, max_sp_num)
 
-        assert q is not None
         B, C, T, N = q.shape
 
         if just_feats:
-            h, w = np.ceil(
-                np.array(x.shape[-2:]) / self.map_scale).astype(np.int)
+            h, w = np.ceil(np.array(x.shape[-2:]) / self.map_scale).astype(np.int)
             return (q, mm) if _N > 1 else (q, q.view(*q.shape[:-1], h, w))
 
         #################################################################
         # Compute walks
         #################################################################
+        
         walks = dict()
 
         As = self.affinity(q[:, :, :-1], q[:, :, 1:])
+        A12s = [self.stoch_mat(As[:, i], do_dropout=True) for i in range(T - 1)]
 
-        A12s = [self.stoch_mat(As[:, i], do_dropout=True)
-                for i in range(T - 1)]
+        # Palindromes
+        A21s = [self.stoch_mat(As[:, i].transpose(-1, -2), do_dropout=True) for i in range(T - 1)]
+        AAs = []
+        for i in list(range(1, len(A12s))):
+            g = A12s[: i + 1] + A21s[: i + 1][::-1]
+            aar = aal = g[0]
+            for _a in g[1:]:
+                aar, aal = aar @ _a, _a @ aal
 
-        # # Palindromes
-        if not self.sk_targets:
-            A21s = [
-                self.stoch_mat(As[:, i].transpose(-1, -2), do_dropout=True)
-                for i in range(T - 1)
-            ]
-            AAs = []
-            for i in list(range(1, len(A12s))):
-                g = A12s[: i + 1] + A21s[: i + 1][::-1]
-                aar = aal = g[0]
-                for _a in g[1:]:
-                    aar, aal = aar @ _a, _a @ aal
+            AAs.append((f"l{i}", aal) if self.flip else (f"r{i}", aar))
 
-                AAs.append((f"l{i}", aal) if self.flip else (f"r{i}", aar))
-
-            for i, aa in AAs:
-                walks[f"cyc {i}"] = [aa, self.xent_targets(aa)]
-
-        # Sinkhorn-Knopp Target (experimental)
-        else:
-            a12, at = A12s[0], self.stoch_mat(
-                A[:, 0], do_dropout=False, do_sinkhorn=True
-            )
-            for i in range(1, len(A12s)):
-                a12 = a12 @ A12s[i]
-                at = self.stoch_mat(
-                    As[:, i], do_dropout=False, do_sinkhorn=True) @ at
-                with torch.no_grad():
-                    targets = (
-                        utils.sinkhorn_knopp(
-                            at, tol=0.001, max_iter=10, verbose=False)
-                        .argmax(-1)
-                        .flatten()
-                    )
-                walks[f"sk {i}"] = [a12, targets]
+        for i, aa in AAs:
+            walks[f"cyc {i}"] = [aa, self.xent_targets(aa)]
 
         #################################################################
         # Compute loss
         #################################################################
+
         xents = [torch.tensor([0.0]).to(self.args.device)]
         diags = dict()
 
@@ -344,8 +381,8 @@ class CRW(nn.Module):
             logits = torch.log(A + EPS).flatten(0, -2)
             loss = self.xent(logits, target).mean()
             acc = (torch.argmax(logits, dim=-1) == target).float().mean()
-            diags.update(
-                {f"{H} xent {name}": loss.detach(), f"{H} acc {name}": acc})
+            diags.update({f"{H} xent {name}": loss.detach(), 
+                          f"{H} acc {name}": acc})
             xents += [loss]
 
         #################################################################
@@ -385,12 +422,8 @@ class CRW(nn.Module):
         f1, f2 = q[:, :, t1], q[:, :, t2]
 
         A = self.affinity(f1, f2)
-        A1, A2 = self.stoch_mat(A, False, False), self.stoch_mat(
-            A.transpose(-1, -2), False, False
-        )
+        A1, A2 = self.stoch_mat(A, False, False), self.stoch_mat(A.transpose(-1, -2), False, False)
         AA = A1 @ A2
-        xent_loss = self.xent(
-            torch.log(AA + EPS).flatten(0, -2), self.xent_targets(AA))
+        xent_loss = self.xent(torch.log(AA + EPS).flatten(0, -2), self.xent_targets(AA))
 
-        utils.visualize.frame_pair(
-            x, q, mm, t1, t2, A, AA, xent_loss, self.vis.vis)
+        utils.visualize.frame_pair(x, q, mm, t1, t2, A, AA, xent_loss, self.vis.vis)
