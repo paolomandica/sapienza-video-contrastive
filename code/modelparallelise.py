@@ -2,13 +2,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-
 import utils
 
 import skimage
 from skimage.util import img_as_float
 
-from prototyping import view_as_windows
+from utils import ZeroSoftmax, view_as_windows
 
 EPS = 1e-20
 
@@ -24,6 +23,7 @@ class CRW(nn.Module):
         self.encoder = utils.make_encoder(args).to(self.args.device)
         self.infer_dims()
         self.selfsim_fc = self.make_head(depth=getattr(args, "head_depth", 0))
+        self.zero_softmax = ZeroSoftmax()
 
         self.xent = nn.CrossEntropyLoss(reduction="none")
         self._xent_targets = dict()
@@ -41,15 +41,13 @@ class CRW(nn.Module):
         dummy_out = self.encoder(dummy)
         self.enc_hid_dim = dummy_out.shape[1]
         self.map_scale = in_sz // dummy_out.shape[-1]
-        out = self.encoder(torch.zeros(1, 3, 1, 320, 320).to(next(self.encoder.parameters()).device))
-        # scale = out[1].shape[-2:]
 
     def make_head(self, depth=1):
         head = []
         if depth >= 0:
             dims = [self.enc_hid_dim] + [self.enc_hid_dim] * depth + [128]
             for d1, d2 in zip(dims, dims[1:]):
-                h = nn.Linear(d1, d2)
+                h = nn.Linear(d1, d2, bias=False)
                 head += [h, nn.ReLU()]
             head = head[:-1]
 
@@ -61,7 +59,6 @@ class CRW(nn.Module):
             .float()
             .cuda()
             )
-        
         return A * mask
 
     def affinity(self, x1, x2):
@@ -90,7 +87,8 @@ class CRW(nn.Module):
                                         max_iter=100, 
                                         verbose=False)
 
-        return F.softmax(A / self.temperature, dim=-1)
+        # return F.softmax(A / self.temperature, dim=-1)
+        return self.zero_softmax(A / self.temperature, dim=-1)
 
     def pixels_to_nodes(self, x):
         """
@@ -116,7 +114,7 @@ class CRW(nn.Module):
             N, H, W = maps.shape[0] // B, 1, 1
 
         # compute node embeddings by spatially pooling node feature maps
-        feats = maps.mean(-1).mean(-1)
+        feats = maps.sum(-1).sum(-1) / (H * W)
         feats = self.selfsim_fc(feats.transpose(-1, -2)).transpose(-1, -2)
         feats = F.normalize(feats, p=2, dim=1)
 
@@ -125,9 +123,9 @@ class CRW(nn.Module):
 
         return feats, maps
 
-    #####################################################################################
-    # Luca's Original Superpixel-to-Node Mapping Functions; Run on CPU; suffixed _cpu
-    #####################################################################################
+    ############################################################
+    # CPU Superpixel functions - Retained for reference
+    ############################################################
 
     def extract_sp_feat_cpu(self, img, img_maps, sp_mask):
         """
@@ -256,77 +254,73 @@ class CRW(nn.Module):
 
         return ff_tensor, seg_list
 
-    ################################################################################
-    # Parallel over Batch and Time Dimensions (B, T)
-    ################################################################################
+    ############################################################
+    # Parallelised (GPU) Superpixels
+    ############################################################
 
-    def extract_sp_feat(self, video, maps, superpixel_mask, max_sp_num):
-        """
-        Arguments:
-            video:              frame sequence; of shape B, c, T, h, w
-            maps:               image feature maps returned by encoder; of shape B, C, T, H, W
-            superpixel_mask:    densely-coded superpixel maks; of shape B, T, h, w
+    def image_to_nodes(self, x, sp_mask, max_sp_num):
+        """ 
+        Compute superpixel node representations by spatially average pooling feature maps within 
+        superpixels.
         
-        Returns:
-            feats:              
+        In summary: video + superpixel mask -> superpixel node embeddings
+
+        Inputs:
+            -- 'x' (B x T x c x h x w), video (frame image sequence)
+            -- 'sp_mask' (B x T x c x h x w), dense superpixel maks; integers 0, ..., (max_sp_num-1)
+            -- 'max_sp_num' (int), maximum number of superpixels used (value passed to segmentation algo)
+        Outputs:
+            # -- 'sp_feats' (B x C_reduced x T x N), superpixel node embeddings
+            # -- 'maps'  (B x C x T x H x W), video (frame) feature maps
+
+        Notes
+        -----
+
+        C_reduced above refers to the reduced latent-space dimensionality of the
+        superpixel node representations (sp_feats) after being passed through the
+        projection head (selfsim_fc). 
         """
-        B, c, T, h, w = video.shape
+        
+        # Compute frame feature maps using encoder
+        B, T, c, h, w = x.shape
+        x = x.transpose(1, 2) # swap T(ime) and c(hannel) dimensions
+        maps = self.encoder(x)
         _B, C, _T, H, W = maps.shape
 
-        # Number of superpixels present in each mask; (B x T); (8 x 4); 
-        # useful for downstream checks
-        n_superpixels = torch.max(superpixel_mask.flatten(2,3), dim=2)[0]
-        idxs_sp = torch.arange(max_sp_num, device=self.args.device)[None, :, None, None].expand(B, T, -1, h, w)
-        superpixels = (superpixel_mask.unsqueeze(2) == idxs_sp).int() # broadcasts over SP dimension
-        window_shape = (*superpixels.shape[:3], h//H, w//W) # (B, T, SP, h//H, w//W); (8, 4, 30, 8, 8)
-        window_step = h // H # 8
-        out = view_as_windows(superpixels, window_shape, step=window_step)
-        out = out[0, 0, 0] # eliminate length-1 dims indexing batch, time and superpixel dims; B, T and SP
-        # -> out now has dimensions (H, W, B, T, SP, h//H, w//W); (32, 32, 8, 4, 30, 8, 8)
-        out = out.permute(2, 3, 0, 1, 4, 5, 6)
-        # -> out now has dimensions (B, T, H, W, SP, h//h, w//W); (8, 4, 32, 32, 30, 8, 8) 
-        ww_not_norm = out.sum(-1).sum(-1)
-        sp_size = (superpixels.sum(-1).sum(-1) + EPS)
-        ww_norm = ww_not_norm / sp_size[:, :, None, None, :].expand(-1, -1, H, W, -1)
-        ww_norm_expand = ww_norm.unsqueeze(4).repeat(1, 1, 1, 1, C, 1)
-
-        img_map = maps.permute(0, 2, 3, 4, 1) # shape (B, T, H, W, C)
-        img_map_expand = img_map.unsqueeze(-1).repeat(1, 1, 1, 1, 1, ww_norm_expand.shape[-1])
-
-        oo = ww_norm_expand * img_map_expand
-        feats = oo.sum(2).sum(2).permute(0, 1, 3, 2)
-
-        return feats
-
-    def image_to_nodes(self, x, superpixel_mask, max_sp_num):
-        """Inputs:
-            -- 'x' (B x C x T x h x w), batch of images
-        Outputs:
-            -- 'feats' (B x C x T x N), node embeddings
-            -- 'maps'  (B x C x T x H x W), node feature maps
-        """
-        B, T, c, h, w = x.shape
-        x = x.permute(0, 2, 1, 3, 4) # new shape after permute: B, c, T, h, w
-        maps = self.encoder(x)
-        B, C, T, H, W = maps.shape
-
+        # Regularise by dropping frame features (optional)
         if self.featdrop_rate > 0:
             maps = self.featdrop(maps)
 
-        superpixel_mask_1D = superpixel_mask[:, :, 0, :, :]
-        ff_tensor = self.extract_sp_feat(x, maps, superpixel_mask_1D, max_sp_num)
-        ff_tensor[ff_tensor.isnan()] = 0
+        # Number of superpixels present in each mask; (B, T); (8, 4). Useful for downstream checks
+        # n_superpixels = torch.max(sp_mask.flatten(2,3), dim=2)[0]
 
-        # compute frame embeddings by spatially pooling frame feature maps
-        # shape (B, T, SP, C) -> (B, SP, C, T)
-        ff_tensor = ff_tensor.permute(0, 2, 3, 1)
-        ff_tensor = self.selfsim_fc(ff_tensor.transpose(-1, -2)).transpose(-1, -2)
-        ff_tensor = F.normalize(ff_tensor, p=2, dim=2)
-        ff_tensor = ff_tensor.permute(0, 2, 3, 1)  # B, C, T, SP
+        # Make sp_mask "one-hot" from dense, with a new SP dimension;  B, T, SP, h, w
+        sp_mask = sp_mask[:, :, 0, :, :] # NOTE Segmentation (e.g. SLIC) returns a 3-channel mask 
+        idxs_sp = torch.arange(max_sp_num, device=self.args.device)[None, :, None, None]
+        sp_mask = (sp_mask.unsqueeze(2) == idxs_sp).int() # NOTE sp_mask broadcasts over SP dimension
 
-        return ff_tensor, None
+        # Create a weighted superpixel mask to apply to feature maps
+        # NOTE window_shape is (B, T, SP, h//H, w//W)
+        window_shape, window_step = (*sp_mask.shape[:3], h//H, w//W), h // H
+        sp_mask_wndws = view_as_windows(sp_mask, window_shape, step=window_step)[0, 0, 0] # drop singleton dims
+        sp_mask_wndws = sp_mask_wndws.sum(-1).sum(-1) # sum over windows h//H and w//W
+        sp_mask_wndws = sp_mask_wndws.permute(2, 3, 0, 1, 4) # (H, W, B, T, SP) -> (B, T, H, W, SP)
+        sp_mask_wndws = sp_mask_wndws / (sp_mask.sum(-1).sum(-1) + EPS)[:, :, None, None, :] # normalise mask by SP sizes
+        sp_mask_wndws = sp_mask_wndws.unsqueeze(4)
 
-    def forward(self, x, superpixel_mask, max_sp_num, just_feats=False):
+        # Compute superpixel node embeddings by multiplying feature maps by weighted mask
+        img_map_expanded = maps.permute(0, 2, 3, 4, 1).unsqueeze(-1)
+        sp_feats = sp_mask_wndws * img_map_expanded
+        sp_feats = sp_feats.sum(2).sum(2).permute(0, 3, 1, 2)
+
+        # Reduce latent dimensionality of superpixel nodes via projection head
+        sp_feats = self.selfsim_fc(sp_feats)
+        sp_feats = F.normalize(sp_feats, p=2, dim=3)
+        sp_feats = sp_feats.permute(0, 3, 2, 1)  # B, C, T, SP
+
+        return sp_feats, maps
+
+    def forward(self, x, sp_mask, max_sp_num, just_feats=False):
         """
         Input is B x T x N*C x H x W, where either
            N>1 -> list of patches of images
@@ -338,18 +332,14 @@ class CRW(nn.Module):
         # Image/Pixels to Nodes
         #################################################################
 
-        q = None # Looks like a debugging vestige; TODO Remove
-
-        if superpixel_mask is None:
-            # use patches
+        if sp_mask is None:
+            # Patches
             _N, C = C // 3, 3
             x = x.transpose(1, 2).view(B, _N, C, T, H, W)
             q, mm = self.pixels_to_nodes(x)
         else:
-            # compute superpixels masks if not loaded
-            q, mm = self.image_to_nodes(x, superpixel_mask, max_sp_num)
-
-        assert q is not None
+            # Superpixels
+            q, mm = self.image_to_nodes(x, sp_mask, max_sp_num)
 
         B, C, T, N = q.shape
 
@@ -360,46 +350,30 @@ class CRW(nn.Module):
         #################################################################
         # Compute walks
         #################################################################
+        
         walks = dict()
 
         As = self.affinity(q[:, :, :-1], q[:, :, 1:])
-
         A12s = [self.stoch_mat(As[:, i], do_dropout=True) for i in range(T - 1)]
 
         # Palindromes
-        if not self.sk_targets:
-            A21s = [self.stoch_mat(As[:, i].transpose(-1, -2), do_dropout=True) for i in range(T - 1)]
-            AAs = []
-            for i in list(range(1, len(A12s))):
-                g = A12s[: i + 1] + A21s[: i + 1][::-1]
-                aar = aal = g[0]
-                for _a in g[1:]:
-                    aar, aal = aar @ _a, _a @ aal
+        A21s = [self.stoch_mat(As[:, i].transpose(-1, -2), do_dropout=True) for i in range(T - 1)]
+        AAs = []
+        for i in list(range(1, len(A12s))):
+            g = A12s[: i + 1] + A21s[: i + 1][::-1]
+            aar = aal = g[0]
+            for _a in g[1:]:
+                aar, aal = aar @ _a, _a @ aal
 
-                AAs.append((f"l{i}", aal) if self.flip else (f"r{i}", aar))
+            AAs.append((f"l{i}", aal) if self.flip else (f"r{i}", aar))
 
-            for i, aa in AAs:
-                walks[f"cyc {i}"] = [aa, self.xent_targets(aa)]
-
-        # Sinkhorn-Knopp Target (experimental)
-        else:
-            # TODO A is not defined according to my linter; 
-            #      not even in the original videowalk code
-            a12, at = A12s[0], self.stoch_mat(A[:, 0], do_dropout=False, do_sinkhorn=True)
-            for i in range(1, len(A12s)):
-                a12 = a12 @ A12s[i]
-                at = self.stoch_mat(As[:, i], do_dropout=False, do_sinkhorn=True) @ at
-                with torch.no_grad():
-                    targets = (
-                        utils.sinkhorn_knopp(at, tol=0.001, max_iter=10, verbose=False)
-                        .argmax(-1)
-                        .flatten()
-                    )
-                walks[f"sk {i}"] = [a12, targets]
+        for i, aa in AAs:
+            walks[f"cyc {i}"] = [aa, self.xent_targets(aa)]
 
         #################################################################
         # Compute loss
         #################################################################
+
         xents = [torch.tensor([0.0]).to(self.args.device)]
         diags = dict()
 

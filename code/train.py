@@ -17,8 +17,9 @@ from data.video import VideoList
 from torchvision.datasets.samplers.clip_sampler import RandomClipSampler, UniformClipSampler
 
 import utils
+
 from model import CRW
-from modelparallelise import CRW as CRW_GPU
+# from modelparallelise import CRW
 
 from teacherstudent import CRWTeacherStudent
 
@@ -221,8 +222,6 @@ def main(args):
         optimizer, milestones=lr_milestones, gamma=args.lr_gamma)
 
     model_without_ddp = model
-
-    accelerator = None
 
     # Parallelise model over GPUs
     if args.data_parallel:
