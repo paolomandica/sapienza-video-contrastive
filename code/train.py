@@ -20,7 +20,7 @@ from model import CRW
 
 
 def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, print_freq,
-                    vis=None, checkpoint_fn=None, rcnn=None):
+                    vis=None, checkpoint_fn=None):
 
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -31,19 +31,19 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
 
     header = 'Epoch: [{}]'.format(epoch)
 
+    # Initialise wandb
+    if vis is not None:
+        vis.wandb_init(model)
+
     for step, (video, orig) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         start_time = time.time()
 
-        breakpoint()
-
-        orig = orig.to(device)
-        pred = rcnn(orig)
-
+        orig = orig.to(device)      # [8, 4, 3, 256, 256]
         video = video.to(device)
-        output, loss, diagnostics = model(video)
+        output, loss, diagnostics = model(video, orig)
         loss = loss.mean()
 
-        if vis is not None and np.random.random() < 0.01:
+        if vis is not None:
             vis.wandb_init(model)
             vis.log(dict(loss=loss.mean().item()))
             vis.log({k: v.mean().item() for k, v in diagnostics.items()})
@@ -167,14 +167,14 @@ def main(args):
 
     vis = utils.visualize.Visualize(args) if args.visualize else None
 
-    print("Creating model")
-    model = CRW(args, vis=vis).to(device)
-    print(model)
-
     # initialize segmentation model
-    rcnn = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True)
-    # rcnn = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(pretrained=True)
-    rcnn.eval()
+    # rcnn = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True)
+    rcnn = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_320_fpn(
+        pretrained=True)
+
+    print("Creating model")
+    model = CRW(args, vis=vis, rcnn=rcnn).to(device)
+    print(model)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
@@ -220,7 +220,7 @@ def main(args):
     for epoch in range(args.start_epoch, args.epochs):
         train_one_epoch(model, optimizer, lr_scheduler, data_loader,
                         device, epoch, args.print_freq,
-                        vis=vis, checkpoint_fn=save_model_checkpoint, rcnn=rcnn)
+                        vis=vis, checkpoint_fn=save_model_checkpoint)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))

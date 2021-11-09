@@ -9,9 +9,10 @@ path_to_kinetics_sample="/data_volume/data/kinetics_sample/"
 cache_path_sample="/data_volume/data/cached_data/kinetics_sample.pt"
 
 
-python -W ignore train.py --data-path $path_to_kinetics_sample \
---cache-dataset --cache-path $cache_path_sample \
+python -W ignore train.py --data-path $path_to_kinetics \
+--cache-dataset --cache-path $cache_path \
 --frame-aug grid --dropout 0.1 --clip-len 4 --temp 0.05 \
---model-type "scratch" --workers 30 --batch-size 8 --lr 0.0001 \
---epochs 10  --data-parallel 
+--model-type "scratch" --workers 30 --batch-size 16 --lr 0.0001 \
+--epochs 10 --visualize
+# --data-parallel
 # --visualize

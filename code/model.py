@@ -10,7 +10,7 @@ EPS = 1e-20
 
 
 class CRW(nn.Module):
-    def __init__(self, args, vis=None):
+    def __init__(self, args, vis=None, rcnn=None):
         super(CRW, self).__init__()
         self.args = args
 
@@ -32,6 +32,8 @@ class CRW(nn.Module):
         self.flip = getattr(args, 'flip', False)
         self.sk_targets = getattr(args, 'sk_targets', False)
         self.vis = vis
+
+        self.rcnn = rcnn
 
     def infer_dims(self):
         in_sz = 256
@@ -116,7 +118,60 @@ class CRW(nn.Module):
 
         return feats, maps
 
-    def forward(self, x, just_feats=False,):
+    def boxes_to_nodes(self, x, orig):
+        score_threshold = 0.4
+        num_frames = len(x)
+        output = []
+        max_N = -1
+
+        for idx, frame in enumerate(x):
+            boxes = frame['boxes']
+            scores = frame['scores']
+
+            obj_patches = boxes[scores > score_threshold]
+            bg_feat = torch.empty(128, 0).to(self.args.device)
+
+            # breakpoint()
+            for bb in obj_patches:
+                x1, y1, x2, y2 = bb.type(torch.int16)
+                try:
+                    curr_feat = self.encoder(
+                        orig[idx, :, y1:y2, x1:x2].unsqueeze(0).unsqueeze(2))
+                    curr_feat = curr_feat.mean(-1).mean(-1).squeeze(0)
+                    curr_feat = self.selfsim_fc(
+                        curr_feat.transpose(-1, -2)).transpose(-1, -2)
+                    curr_feat = F.normalize(curr_feat, p=2, dim=1)
+                    bg_feat = torch.cat((bg_feat, curr_feat), 1)    # 512 x N
+                except Exception as e:
+                    # print("Exception:", e)
+                    # print("skipped object: (" + str(int(x2-x1)) +
+                    #       "," + str(int(y2-y1)) + ")")
+                    pass
+
+            N = bg_feat.shape[1]
+            max_N = N if N > max_N else max_N
+            output.append(bg_feat)
+
+        return output, max_N
+
+    def padding(self, q, bb, max_N):
+        B, C, T, N = q.shape
+
+        # padding bb
+        bb_tensor = torch.empty(0, C, max_N).to(self.args.device)
+        for bg_feat in bb:
+            padded_box = nn.functional.pad(
+                bg_feat,
+                pad=(0, max_N - bg_feat.shape[1]),
+                mode="constant").unsqueeze(0)     # 512 x max_N
+            bb_tensor = torch.cat((bb_tensor, padded_box), 0)
+        # breakpoint()
+        bb_tensor = bb_tensor.reshape(B, T, C, max_N).permute(0, 2, 1, 3)
+
+        q_concat = torch.cat((q, bb_tensor), dim=-1)
+        return q_concat
+
+    def forward(self, x, orig, just_feats=False,):
         '''
         Input is B x T x N*C x H x W, where either
            N>1 -> list of patches of images
@@ -130,6 +185,15 @@ class CRW(nn.Module):
         #################################################################
         x = x.transpose(1, 2).view(B, _N, C, T, H, W)
         q, mm = self.pixels_to_nodes(x)
+
+        # encode bounding boxes
+        # pred = 32 x num_boxes x 4 (coords)
+        self.rcnn.eval()
+        boxes = self.rcnn(orig.flatten(0, 1))
+        bb, max_N = self.boxes_to_nodes(boxes, orig.flatten(0, 1))
+
+        # apply padding and concatenate
+        q = self.padding(q, bb, max_N)
         B, C, T, N = q.shape
 
         if just_feats:
@@ -190,7 +254,7 @@ class CRW(nn.Module):
         #################################################################
         # Visualizations
         #################################################################
-        if (np.random.random() < 0.02) and (self.vis is not None):  # and False:
+        if (np.random.random() < 0.02) and (self.vis is not None) and False:
             with torch.no_grad():
                 self.visualize_frame_pair(x, q, mm)
                 if _N > 1:  # and False:
