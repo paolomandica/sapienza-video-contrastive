@@ -10,30 +10,18 @@ See also docs for `docker ps` listing containers <https://docs.docker.com/engine
 
 ### Docker Container on DGX
 
-NB Before running, ensure the Docker is using the appropriate context (i.e. DGXContext locally). The context can be set with:
+NB Before running, ensure the Docker is using the appropriate context (i.e. DGXContext locally). The context can be set with: `docker context use DGXContext`.
 
-`docker context use DGXContext`
-
-```sh
-docker run -it \
---user "$(id -u):$(id -g)" \
---gpus '"device=5"' \
---shm-size 4G \
--v /raid/data/francolu:/data_volume \
--p 8093:8093 \
-paolomandica/sapienza-video-contrastive
-```
-
-Or run with a specific name: [NAME_OF_CONTAINER]. 
+Run a container (with a specific name, replacing `NAME_OF_CONTAINER`:
 
 ```sh
 docker run -it \
 --user "$(id -u):$(id -g)" \
 --gpus '"device=2"' \
---name "[NAME_OF_CONTAINER]" \
---shm-size 4G \
+--name "NAME_OF_CONTAINER" \
+--shm-size 8G \
 -v /raid/data/francolu:/data_volume \
--p 8092:8092 \
+-p 8093:8093 \
 paolomandica/sapienza-video-contrastive
 ```
 
@@ -66,29 +54,7 @@ docker run -it \
 paolomandica/sapienza-video-contrastive
 ```
 
-### Pull Down Project from GitHub
-
-Clone repo (inc. PAT), `cd` into it, checkout `ts` branch and `cd` into the code subdirectory. 
-
-```sh
-git clone https://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@github.com/anilkeshwani/video-contrastive.git && \
-cd video-contrastive && \
-git checkout ts && \
-cd code
-```
-
-NB The above OAuth token has been revoked for security; replace the above with a valid one for access with OAuth. 
-
-### Installs
-
-Some installs may be required in the container. For example:
-
-```sh
-pip install visdom wandb av
-pip install fast_slic # for superpixels
-```
-
-These install into `/home/francolu/.local/bin`. Optionally add this to the `PATH` via
+Note when creating a new container, whilst the necessary packages can be installed with `pip install -r requirements.txt` from the project root, some including wandb install into `/home/francolu/.local/bin`. You can optionally add this to the `PATH` via
 
 ```sh
 export PATH="$HOME/.local/bin:$PATH"
@@ -100,9 +66,9 @@ export PATH="/home/francolu/.local/bin:$PATH"
 export PATH="/any/arbitrary/path/to/binaries/or/else/here:$PATH"
 ```
 
-Check the PATH environment variable has been correctly updated with `echo $PATH$`. It should have the new path added followed by a colon, `:`, and then the rest of the path as existed previously since the PATH is a colon-separated string. 
+Check the PATH environment variable (a colon-separated string) has been correctly updated with `echo $PATH$`. It should have the new path prepended (with a trailing colon). 
 
-### Server Utilisation
+### Server Utilisation & Process Viewing
 
 Watch (and update) GPU usage statistics on the server. 
 
@@ -111,6 +77,8 @@ NB `watch` with `-d` flag highlights diffs across prints, `-n` sets refresh rate
 ```sh
 watch -d -n 0.5 nvidia-smi
 ```
+
+Meanwhile, processes can be interactively viewed and sorted via the [`htop`](https://linux.die.net/man/1/htop) command line tool. 
 
 ## Attaching a Container to VSCode
 
