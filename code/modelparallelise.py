@@ -286,7 +286,7 @@ class CRW(nn.Module):
         out = out.permute(2, 3, 0, 1, 4, 5, 6)
         # -> out now has dimensions (B, T, H, W, SP, h//h, w//W); (8, 4, 32, 32, 30, 8, 8) 
         ww_not_norm = out.sum(-1).sum(-1)
-        sp_size = superpixels.sum(-1).sum(-1)
+        sp_size = (superpixels.sum(-1).sum(-1) + EPS)
         ww_norm = ww_not_norm / sp_size[:, :, None, None, :].expand(-1, -1, H, W, -1)
         ww_norm_expand = ww_norm.unsqueeze(4).repeat(1, 1, 1, 1, C, 1)
 
