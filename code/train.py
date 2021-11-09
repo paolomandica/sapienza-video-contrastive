@@ -99,7 +99,7 @@ def _get_cache_path(filepath):
 
 def collate_fn(batch):
     # remove audio and labels from the batch
-    batch = [(d[0], d[1]) for d in batch]
+    batch = [(d[0], d[1], d[2]) for d in batch]
     return default_collate(batch)
 
 
