@@ -21,13 +21,13 @@ cache_path_sample_ares="/data_volume/data/cached_data/kinetics_sample.pt"
 python -W ignore train.py --data-path $path_to_kinetics \
 --cache-dataset --cache-path $cache_path \
 --frame-aug grid --dropout 0.1 --clip-len 4 --temp 0.05 \
---model-type "scratch" --workers 30 --batch-size 20 --lr 0.0001 \
+--model-type "scratch" --workers 30 --batch-size 24 --lr 0.0001 \
 --epochs 10 --data-parallel \
---sp-method slic --num-sp 20 --prob 0 `# NB Changed prob from 0.7` \
+--sp-method slic --num-sp 20 --prob 0 \
 --randomise-superpixels --visualize 
---output-dir ./checkpoints/randomise_sp_unnorm/ 
+--output-dir "./checkpoints/randomise_sp_unnorm/"
 
-# --resume ""
+# --resume "./checkpoints/randomise_sp_unnorm/checkpoint.pth"
 
 ####################################################################################################
 # Teacher-Student Training
