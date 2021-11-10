@@ -17,7 +17,7 @@ def compute_sp_FH(img):
     return seg
 
 
-def compute_mask(video, sp_method, num_components, p):
+def compute_mask(video, sp_method, num_components, p, randomise_superpixels, randomise_superpixels_range):
     sp_tensor_time = []
 
     if sp_method == "random":
@@ -27,14 +27,27 @@ def compute_mask(video, sp_method, num_components, p):
     else:
         method = sp_method
 
-    for t in range(video.shape[0]):
-        img = video[t, :, :, :]
-        img = img.permute(1, 2, 0).cpu().numpy()
-        if method == "slic":
-            segments = compute_sp_slic(img, num_components)
-        elif method == "fh":
-            segments = compute_sp_FH(img)
-        sp_tensor_time.append(torch.from_numpy(segments))
+    if randomise_superpixels:
+        # Randomise the (max) number of segments in each frame over time
+        for t in range(video.shape[0]):
+            img = video[t, :, :, :]
+            img = img.permute(1, 2, 0).cpu().numpy()
+            if method == "slic":
+                low, high = num_components - randomise_superpixels_range//2, num_components + randomise_superpixels_range//2
+                segments = compute_sp_slic(img, torch.randint(low=low, high=high, size=(1,)).item())
+            elif method == "fh":
+                segments = compute_sp_FH(img)
+            sp_tensor_time.append(torch.from_numpy(segments))
+    else:
+
+        for t in range(video.shape[0]):
+            img = video[t, :, :, :]
+            img = img.permute(1, 2, 0).cpu().numpy()
+            if method == "slic":
+                segments = compute_sp_slic(img, num_components)
+            elif method == "fh":
+                segments = compute_sp_FH(img)
+            sp_tensor_time.append(torch.from_numpy(segments))
 
     mask = torch.stack(sp_tensor_time)
     mask = mask.unsqueeze(3).repeat(1, 1, 1, 3)
