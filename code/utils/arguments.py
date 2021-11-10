@@ -181,18 +181,25 @@ def train_args():
                         action='store_true', help='visualize with wandb and visdom')
     parser.add_argument('--remove-layers', default=[], help='layer[1-4]')
 
-    # sinkhorn-knopp ideas (experimental)
+    # Sinkhorn-Knopp Ideas (Experimental)
     parser.add_argument('--sk-align', default=False, action='store_true',
                         help='use sinkhorn-knopp to align matches between frames')
     parser.add_argument('--sk-targets', default=False, action='store_true',
                         help='use sinkhorn-knopp to obtain targets, by taking the argmax')
 
+    # Superpixels
     parser.add_argument('--sp-method', default='slic', type=str,
                         help='none | slic | random')
     parser.add_argument('--num-sp', default=30, type=int,
                         help='number of components for SLIC')
     parser.add_argument('--prob', default=1.0, type=float,
                         help='sampling probability of patches or superpixels. 1 for patches; 0 for superpixels')
+
+    # Variable Superpixels
+    parser.add_argument('--randomise-superpixels', default=False, action='store_true',
+                        help='Use a random sequence for the number of superpixel components (with SLIC)')
+    parser.add_argument('--randomise-superpixels-range', default=10, type=int,
+                        help='Range of uniform distribution to sample when randomising number of superpixels used for segmentation, i.e. (High - Low)')
 
     # Teacher-Student
     parser.add_argument('--teacher-student', default=False, action='store_true',

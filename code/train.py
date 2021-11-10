@@ -146,7 +146,9 @@ def main(args):
                 _precomputed_metadata=cached,
                 sp_method=args.sp_method,
                 num_components=args.num_sp,
-                prob=args.prob
+                prob=args.prob, 
+                randomise_superpixels=args.randomise_superpixels, 
+                randomise_superpixels_range=args.randomise_superpixels_range
             )
         # HACK assume image dataset if data path is a directory
         elif os.path.isdir(args.data_path):
