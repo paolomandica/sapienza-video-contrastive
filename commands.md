@@ -46,7 +46,7 @@ An amended version of the above with an appropriate mapping for the data locatio
 
 ```sh
 docker run -it --gpus '"device=0"' \
---shm-size 8G -v /home/ares/luca/panasonic/data:/data_volume \
+--shm-size 8G -v /home/ares/luca/panasonic:/data_volume \
 -p 8093:8093 --name "francolu_0" \
 paolomandica/sapienza-video-contrastive
 ```
