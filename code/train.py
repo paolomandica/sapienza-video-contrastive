@@ -23,6 +23,8 @@ from model import CRW
 
 from teacherstudent import CRWTeacherStudent
 
+torch.autograd.set_detect_anomaly(True)
+
 # Disable wandb syncing to the cloud
 # os.environ['WANDB_MODE'] = 'offline'
 
