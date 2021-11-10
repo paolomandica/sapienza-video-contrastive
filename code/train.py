@@ -23,6 +23,8 @@ from model import CRW
 # don't want wandb logs to sync to the cloud
 # os.environ['WANDB_MODE'] = 'offline'
 
+torch.autograd.set_detect_anomaly(True)
+
 
 def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
                     epoch, print_freq, vis=None, checkpoint_fn=None, prob=None):
@@ -40,7 +42,7 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
         start_time = time.time()
 
         # init wandb
-        if epoch == 0 and step == 0 and vis is not None:
+        if vis is not None:
             vis.wandb_init(model)
 
         # forward with patches
