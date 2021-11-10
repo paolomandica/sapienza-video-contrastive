@@ -108,11 +108,13 @@ class Kinetics400(VisionDataset):
         # compute mask
         if self.sp_method != 'none':
             video_mask = compute_mask(
+                # use orig not normalized to compute masks
                 torch.Tensor(
                     video[2]), self.sp_method, self.num_components, self.prob
             )
         else:
             video_mask = torch.empty(0)
 
+        # return just video and orig (both normalized)
         video = video[0], video[1]
         return video, video_mask, audio, label

@@ -145,21 +145,13 @@ def get_train_transforms(args):
 
     transform = frame_transform + frame_aug
     transform_no_grid = frame_transform + NORM
-    transform_no_grid_no_norm = frame_transform
+    transform_no_grid_no_norm = frame_transform + [transforms.ToTensor()]
 
     train_transform = MapTransform(torchvision.transforms.Compose(transform))
     train_transform_no_grid = MapTransform(
         torchvision.transforms.Compose(transform_no_grid))
     train_transform_no_grid_no_norm = MapTransform(
         torchvision.transforms.Compose(transform_no_grid_no_norm))
-
-    plain = torchvision.transforms.Compose(
-        [
-            torchvision.transforms.ToPILImage(),
-            norm_size,
-            *NORM,
-        ]
-    )
 
     def with_orig(x):
         x = train_transform(x), train_transform_no_grid(
