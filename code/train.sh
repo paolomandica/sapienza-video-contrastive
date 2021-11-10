@@ -12,14 +12,13 @@ cache_path_sample="/data_volume/data/cached_data/kinetics_sample.pt"
 # Core {Superpixels | Patches | Mix} Model Training
 ####################################################################################################
 
-python -W ignore train.py --data-path $path_to_kinetics_sample \
---cache-dataset --cache-path $cache_path_sample \
+python -W ignore train.py --data-path $path_to_kinetics \
+--cache-dataset --cache-path $cache_path \
 --frame-aug grid --dropout 0.1 --clip-len 4 --temp 0.05 \
---model-type "scratch" --workers 30 --batch-size 16 --lr 0.0001 \
+--model-type "scratch" --workers 28 --batch-size 16 --lr 0.0001 \
 --epochs 10 \
 --sp-method slic --num-sp 30 --prob 0.7 `# NB Changed prob from 0.7` \
---data-parallel 
-# --visualize
+--data-parallel --visualize
 # --output-dir ./checkpoints/sample/ --resume ""
 
 ####################################################################################################
