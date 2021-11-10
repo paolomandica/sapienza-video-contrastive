@@ -45,12 +45,9 @@ paolomandica/sapienza-video-contrastive `# Docker Image to Run`
 An amended version of the above with an appropriate mapping for the data location on PINLab's workstation. 
 
 ```sh
-docker run -it \
---user "$(id -u):$(id -g)" \
---gpus '"device=0"' \
---shm-size 4G \
--v /home/ares/luca/panasonic/data:/data_volume \
--p 8093:8093 \
+docker run -it --gpus '"device=0"' \
+--shm-size 8G -v /home/ares/luca/panasonic/data:/data_volume \
+-p 8093:8093 --name "francolu_0" \
 paolomandica/sapienza-video-contrastive
 ```
 
