@@ -16,9 +16,8 @@ python -W ignore train.py --data-path $path_to_kinetics_sample \
 --cache-dataset --cache-path $cache_path_sample \
 --frame-aug grid --dropout 0.1 --clip-len 4 --temp 0.05 \
 --model-type "scratch" --workers 30 --batch-size 8 --lr 0.0001 \
---epochs 10 \
+--epochs 10 --data-parallel \
 --sp-method slic --num-sp 30 --prob 0 `# NB Changed prob from 0.7` \
- --data-parallel 
 # --visualize
 # --output-dir ./checkpoints/sample/ --resume ""
 
