@@ -189,7 +189,7 @@ def train_args():
 
     # Superpixels
     parser.add_argument('--sp-method', default='slic', type=str,
-                        help='none | slic | random')
+                        help='none | slic | fh | random')
     parser.add_argument('--num-sp', default=30, type=int,
                         help='number of components for SLIC')
     parser.add_argument('--prob', default=1.0, type=float,
