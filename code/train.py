@@ -33,7 +33,8 @@ torch.autograd.set_detect_anomaly(True)
 ####################################################################################################
 
 def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, 
-                    epoch, print_freq, vis=None, checkpoint_fn=None, prob=None):
+                    epoch, print_freq, vis=None, checkpoint_fn=None, prob=None, 
+                    accuracy_callback=None, patience_iterations=None):
 
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -66,6 +67,16 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
         if vis is not None:
             vis.log(dict(loss=loss.mean().item()))
             vis.log({k: v.mean().item() for k, v in diagnostics.items()})
+
+        if accuracy_callback is not None:
+            if diagnostics['256 acc cyc r2'] <= accuracy_callback['max_accuracy']:
+                accuracy_callback['patience'] += 1
+            
+            if accuracy_callback['patience'] > patience_iterations:
+                checkpoint_fn()
+                # TODO additional logic to change frame skip here
+            
+            accuracy_callback['max_accuracy'] = max(diagnostics['256 acc cyc r2'], accuracy_callback['max_accuracy'])
 
         # NOTE Stochastic checkpointing has been retained
         if checkpoint_fn is not None and np.random.random() < 0.005:
@@ -262,6 +273,11 @@ def main(args):
             torch.save(
                 checkpoint,
                 os.path.join(args.output_dir, 'checkpoint.pth'))
+
+    # Track Accuracy for Callback on Plateau
+    accuracy_callback = {'max_accuracy': 0, 'patience': 0} if args.accuracy_callback else None
+    if accuracy_callback is not None:
+        assert args.patience_iterations, "Accuracy callback requires a (non-zero) patience value in iterations."
     
     # Start Training
     print("Start training", end="\n"+"-"*100+"\n")
@@ -270,7 +286,8 @@ def main(args):
         train_one_epoch(model, optimizer, lr_scheduler, data_loader,
                         device, epoch, args.print_freq,
                         vis=vis, checkpoint_fn=save_model_checkpoint,
-                        prob=args.prob)
+                        prob=args.prob, accuracy_callback=accuracy_callback, 
+                        patience_iterations=args.patience_iterations)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))

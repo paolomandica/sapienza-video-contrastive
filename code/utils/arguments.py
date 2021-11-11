@@ -201,6 +201,14 @@ def train_args():
     parser.add_argument('--randomise-superpixels-range', default=10, type=int,
                         help='Range of uniform distribution to sample when randomising number of superpixels used for segmentation, i.e. (High - Low)')
 
+    # Callbacks
+    parser.add_argument('--accuracy-callback', type=int, # default=100, # TODO Set a default value empirically
+                        default=False, action="store_true", 
+                        help='Trigger a callback when the accuracy plateaus consistently for patience iterations.')
+    # TODO Set a default patience (in iterations) empirically as a function of batch size; 0 is currently used as a sentinel for checks
+    parser.add_argument('--patience-iterations', type=int, default=0, 
+                        help='Number of iterations to wait before triggering callback')
+
     # Teacher-Student
     parser.add_argument('--teacher-student', default=False, action='store_true',
                         help='train with combined teacher-student and contrastive walk loss')
