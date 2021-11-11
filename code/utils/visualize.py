@@ -94,11 +94,11 @@ class Visualize(object):
     def __init__(self, args):
 
         self._env_name = args.name
-        # self.vis = visdom.Visdom(
-        #     port=args.port,
-        #     server='http://%s' % args.server,
-        #     env=self._env_name,
-        # )
+        self.vis = visdom.Visdom(
+            port=args.port,
+            server='http://%s' % args.server,
+            env=self._env_name,
+        )
         self.args = args
 
         self._init = False
@@ -108,7 +108,7 @@ class Visualize(object):
             self._init = True
             wandb.init(project="randomise-superpixels-no-norm",
                        entity="sapienzavideocontrastive",
-                       group="release", 
+                       group="release",
                        config=self.args)
             wandb.watch(model)
 
@@ -207,6 +207,8 @@ def frame_pair(x, ff, mm, t1, t2, A, AA, xent_loss, viz):
     def spatialize(xx): return xx.view(
         *xx.shape[:-1], int(xx.shape[-1]**0.5), int(xx.shape[-1]**0.5))
 
+    breakpoint()
+
     N = AA.shape[-1]
     H = W = int(N**0.5)
     AA = AA.view(-1, H * W, H, W)
@@ -280,3 +282,50 @@ def frame_pair(x, ff, mm, t1, t2, A, AA, xent_loss, viz):
 
     # img_grid = cv2.resize(img_grid.permute(1, 2, 0).cpu().detach().numpy(), (1000, 1000), interpolation=cv2.INTER_NEAREST).transpose(2, 0, 1)
     viz.images(img_grid, win='lossvis')
+
+
+def vis_adj(video, sp_mask, As, viz):
+    from skimage.segmentation import mark_boundaries
+    T, C, H, W = video.shape
+
+    frames = []
+    segs = []
+    scatters = []
+
+    for t in range(T):
+
+        img = video[t]
+        seg = sp_mask[t, 0]
+
+        X = []
+        Y = []
+
+        for sp in np.unique(seg):
+            thresh = (seg == sp)*255
+            # find contours in the binary image
+            contours, hierarchy = cv2.findContours(thresh.astype(
+                "uint8"), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+            for c in contours:
+                # calculate moments for each contour
+                M = cv2.moments(c)
+                x = int(M["m10"] / M["m00"])
+                y = int(M["m01"] / M["m00"])
+
+                # calculate x,y coordinate of center
+                X.append(x)
+                Y.append(y)
+
+        # display the image
+        img_bound = mark_boundaries(np.transpose(img, (1, 2, 0)), seg)
+        img_bound = torch.Tensor(img_bound).permute(2, 0, 1)
+        frames.append(img_bound)
+
+        segs.append(torch.Tensor(sp_mask))
+
+        # ax[1, t].scatter(X, Y, color='red')
+
+        # breakpoint()
+
+    viz.images(torch.stack(frames), nrow=4, win='frames')
+    # viz.images(torch.stack(segs), nrow=4, win='segs')

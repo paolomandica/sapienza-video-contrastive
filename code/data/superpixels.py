@@ -39,7 +39,6 @@ def compute_mask(video, sp_method, num_components, p, randomise_superpixels, ran
                 segments = compute_sp_FH(img)
             sp_tensor_time.append(torch.from_numpy(segments))
     else:
-
         for t in range(video.shape[0]):
             img = video[t, :, :, :]
             img = img.permute(1, 2, 0).cpu().numpy()

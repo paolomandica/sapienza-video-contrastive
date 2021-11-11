@@ -26,19 +26,22 @@ from teacherstudent import CRWTeacherStudent
 torch.autograd.set_detect_anomaly(True)
 
 # Disable wandb syncing to the cloud
-# os.environ['WANDB_MODE'] = 'offline'
+os.environ['WANDB_MODE'] = 'offline'
 
 ####################################################################################################
 # train_one_epoch function
 ####################################################################################################
 
-def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, 
+
+def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
                     epoch, print_freq, vis=None, checkpoint_fn=None, prob=None):
 
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
-    metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value}'))
-    metric_logger.add_meter('clips/s', utils.SmoothedValue(window_size=10, fmt='{value:.3f}'))
+    metric_logger.add_meter(
+        'lr', utils.SmoothedValue(window_size=1, fmt='{value}'))
+    metric_logger.add_meter(
+        'clips/s', utils.SmoothedValue(window_size=10, fmt='{value:.3f}'))
 
     header = f'Epoch: [{epoch}]'
 
@@ -53,12 +56,14 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
 
         if grid:
             video = video.to(device)
-            output, loss, diagnostics = model(video, None, None) if not args.teacher_student else model(video)
+            output, loss, diagnostics = model(
+                video, None, None) if not args.teacher_student else model(video)
         else:
             sp_mask = sp_mask.to(device)
+            orig = orig.to(device)
             max_sp_num = len(torch.unique(sp_mask))
             output, loss, diagnostics = model(orig, sp_mask, max_sp_num)
-        
+
         loss = loss.mean()
 
         # if vis is not None and np.random.random() < 0.01:
@@ -69,14 +74,16 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
         # NOTE Stochastic checkpointing has been retained
         if checkpoint_fn is not None and np.random.random() < 0.005:
             checkpoint_fn()
- 
+
         optimizer.zero_grad()
         loss.backward()
         # print(torch.nn.utils.clip_grad_norm_(model.parameters(), 1), 'grad norm')
         optimizer.step()
 
-        metric_logger.update(loss=loss.item(), lr=optimizer.param_groups[0]["lr"])
-        metric_logger.meters['clips/s'].update(video.shape[0] / (time.time() - start_time))
+        metric_logger.update(
+            loss=loss.item(), lr=optimizer.param_groups[0]["lr"])
+        metric_logger.meters['clips/s'].update(
+            video.shape[0] / (time.time() - start_time))
         lr_scheduler.step()
 
     checkpoint_fn()
@@ -86,6 +93,7 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
 # - _get_cache_path : get cache path for automatic caching of train dataset
 # - collate_fn      : custom collate function for dataloader; removes audio from data samples
 ####################################################################################################
+
 
 def _get_cache_path(filepath):
     import hashlib
@@ -105,6 +113,7 @@ def collate_fn(batch):
 # Main
 ####################################################################################################
 
+
 def main(args):
 
     # Eager Checks
@@ -122,7 +131,8 @@ def main(args):
     torch.backends.cudnn.benchmark = True
 
     print("Preparing training dataloader", end="\n"+"-"*100+"\n")
-    traindir = os.path.join(args.data_path, 'train_256' if not args.fast_test else 'val_256')
+    traindir = os.path.join(
+        args.data_path, 'train_256' if not args.fast_test else 'val_256')
     valdir = os.path.join(args.data_path, 'val_256')
 
     st = time.time()
@@ -146,8 +156,8 @@ def main(args):
                 _precomputed_metadata=cached,
                 sp_method=args.sp_method,
                 num_components=args.num_sp,
-                prob=args.prob, 
-                randomise_superpixels=args.randomise_superpixels, 
+                prob=args.prob,
+                randomise_superpixels=args.randomise_superpixels,
                 randomise_superpixels_range=args.randomise_superpixels_range
             )
         # HACK assume image dataset if data path is a directory
@@ -166,7 +176,8 @@ def main(args):
             )
 
     if args.cache_dataset and os.path.exists(cache_path):
-        print(f"Loading dataset_train from {cache_path}", end="\n"+"-"*100+"\n")
+        print(
+            f"Loading dataset_train from {cache_path}", end="\n"+"-"*100+"\n")
         dataset, _ = torch.load(cache_path)
         cached = dict(video_paths=dataset.video_clips.video_paths,
                       video_fps=dataset.video_clips.video_fps,
@@ -178,14 +189,16 @@ def main(args):
     else:
         dataset = make_dataset(is_train=True)
         if 'kinetics' in args.data_path.lower():  # args.cache_dataset and
-            print(f"Saving dataset_train to {cache_path}", end="\n"+"-"*100+"\n")
+            print(
+                f"Saving dataset_train to {cache_path}", end="\n"+"-"*100+"\n")
             utils.mkdir(os.path.dirname(cache_path))
             dataset.transform = None
             torch.save((dataset, traindir), cache_path)
             dataset.transform = transform_train
 
     if hasattr(dataset, 'video_clips'):
-        dataset.video_clips.compute_clips(args.clip_len, 1, frame_rate=args.frame_skip)
+        dataset.video_clips.compute_clips(
+            args.clip_len, 1, frame_rate=args.frame_skip)
 
     print("Took", time.time() - st)
 
@@ -214,7 +227,8 @@ def main(args):
     if not args.teacher_student:
         model = CRW(args, vis=vis).to(device)
     else:
-        model = CRWTeacherStudent(args, vis=None).to(device) # NOTE Disabled vis during prototyping
+        model = CRWTeacherStudent(args, vis=None).to(
+            device)  # NOTE Disabled vis during prototyping
     # print(model)
 
     # Optimizer
@@ -261,7 +275,7 @@ def main(args):
             torch.save(
                 checkpoint,
                 os.path.join(args.output_dir, 'checkpoint.pth'))
-    
+
     # Start Training
     print("Start training", end="\n"+"-"*100+"\n")
     start_time = time.time()
@@ -278,6 +292,7 @@ def main(args):
 ####################################################################################################
 # Run as Script
 ####################################################################################################
+
 
 if __name__ == "__main__":
     args = utils.arguments.train_args()
