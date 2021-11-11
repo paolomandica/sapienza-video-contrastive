@@ -6,7 +6,6 @@ scikit-learn
 wandb
 visdom
 opencv-contrib-python
-moviepy
 av
 numpy
 pillow
@@ -15,3 +14,4 @@ setuptools
 tqdm
 joblib
 fast-slic
+plotly

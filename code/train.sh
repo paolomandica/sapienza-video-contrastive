@@ -8,25 +8,20 @@ cache_path="/data_volume/data/cached_data/kinetics.pt"
 path_to_kinetics_sample="/data_volume/data/kinetics_sample/"
 cache_path_sample="/data_volume/data/cached_data/kinetics_sample.pt"
 
-path_to_kinetics_ares="/data_volume/data/kinetics/"
-cache_path_ares="/data_volume/data/cached_data/kinetics.pt"
-
-path_to_kinetics_sample_ares="/data_volume/data/kinetics_sample/"
-cache_path_sample_ares="/data_volume/data/cached_data/kinetics_sample.pt"
-
 ####################################################################################################
 # Core {Superpixels | Patches | Mix} Model Training
 ####################################################################################################
 
-python -W ignore train.py --data-path $path_to_kinetics \
---cache-dataset --cache-path $cache_path \
+python -W ignore train.py --data-path $path_to_kinetics_sample \
+--cache-dataset --cache-path $cache_path_sample \
 --frame-aug grid --dropout 0.1 --clip-len 4 --temp 0.05 \
---model-type "scratch" --workers 30 --batch-size 24 --lr 0.0001 \
---epochs 10 --data-parallel \
---sp-method slic --num-sp 20 --prob 0 \
---randomise-superpixels --visualize 
---output-dir "./checkpoints/randomise_sp_unnorm/"
+--model-type "scratch" --workers 30 --batch-size 6 --lr 0.0001 \
+--epochs 10 \
+--sp-method slic --num-sp 16 --prob 0 \
+--visualize --port 8095
 
+# --data-parallel --randomise-superpixels
+# --output-dir "./checkpoints/randomise_sp_unnorm/"
 # --resume "./checkpoints/randomise_sp_unnorm/checkpoint.pth"
 
 ####################################################################################################

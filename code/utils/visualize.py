@@ -13,6 +13,11 @@ import torch
 
 import matplotlib.pyplot as plt
 from matplotlib import cm
+from skimage.segmentation import mark_boundaries
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+import plotly.figure_factory as ff
+import plotly.express as px
 
 
 def pca_feats(ff, K=1, solver='auto', whiten=True, img_normalize=True):
@@ -108,7 +113,7 @@ class Visualize(object):
             self._init = True
             wandb.init(project="randomise-superpixels-no-norm",
                        entity="sapienzavideocontrastive",
-                       group="release", 
+                       group="release",
                        config=self.args)
             wandb.watch(model)
 
@@ -280,3 +285,64 @@ def frame_pair(x, ff, mm, t1, t2, A, AA, xent_loss, viz):
 
     # img_grid = cv2.resize(img_grid.permute(1, 2, 0).cpu().detach().numpy(), (1000, 1000), interpolation=cv2.INTER_NEAREST).transpose(2, 0, 1)
     viz.images(img_grid, win='lossvis')
+
+
+def vis_plotly(plots, T, viz, win=None):
+    fig = make_subplots(rows=1, cols=T)
+    for i, plot in enumerate(plots):
+        fig.add_trace(plot, 1, i+1)
+    fig.update_layout(height=300, width=800)
+    viz.plotlyplot(fig, win=win)
+    viz.update_window_opts(win, opts=dict(height=400, width=900))
+
+
+def vis_adj(video, sp_mask, As, viz):
+    T, C, H, W = video.shape
+
+    frames = []
+    adjs = []
+    segs = []
+    scatters = []
+    scatters_labels = []
+
+    for t in range(T):
+
+        img = video[t]
+        seg = sp_mask[t, 0]
+
+        coords = []
+        labels = []
+        f, ax = plt.subplots()
+
+        for sp in np.unique(seg):
+            thresh = (seg == sp)*255
+            # find contours in the binary image
+            contours, hierarchy = cv2.findContours(thresh.astype(
+                "uint8"), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+            for c in contours:
+                # calculate moments for each contour
+                M = cv2.moments(c)
+                x = int(M["m10"] / M["m00"])
+                y = int(M["m01"] / M["m00"])
+
+                coords.append((x, y))
+
+            labels.append(sp)
+
+        # display the image
+        img_bound = mark_boundaries(np.transpose(img, (1, 2, 0)), seg,
+                                    color=(239, 255, 0), mode="thick")
+        img_bound = torch.Tensor(img_bound).permute(2, 0, 1)
+
+        frames.append(img_bound)
+
+        # TODO: visualize all at once
+        segs.append(go.Contour(z=seg, showscale=False))
+        adjs.append(go.Heatmap(z=As[t], showscale=False))
+        # scatters.append(go.Scatter(x=coords, y=labels))
+
+    viz.images(torch.stack(frames), nrow=T, win='frames')
+    vis_plotly(segs, T, viz, win="segs")
+    vis_plotly(adjs, T, viz, win="adjs")
+    # vis_plotly(scatters, T, viz)

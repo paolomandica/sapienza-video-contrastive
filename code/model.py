@@ -11,6 +11,7 @@ from utils import ZeroSoftmax, view_as_windows
 
 EPS = 1e-20
 
+
 class CRW(nn.Module):
     def __init__(self, args, vis=None):
         super(CRW, self).__init__()
@@ -18,7 +19,8 @@ class CRW(nn.Module):
 
         self.edgedrop_rate = getattr(args, "dropout", 0)
         self.featdrop_rate = getattr(args, "featdrop", 0)
-        self.temperature = getattr(args, "temp", getattr(args, "temperature", 0.07))
+        self.temperature = getattr(
+            args, "temp", getattr(args, "temperature", 0.07))
 
         self.encoder = utils.make_encoder(args).to(self.args.device)
         self.infer_dims()
@@ -37,7 +39,8 @@ class CRW(nn.Module):
 
     def infer_dims(self):
         in_sz = 256
-        dummy = torch.zeros(1, 3, 1, in_sz, in_sz).to(next(self.encoder.parameters()).device)
+        dummy = torch.zeros(1, 3, 1, in_sz, in_sz).to(
+            next(self.encoder.parameters()).device)
         dummy_out = self.encoder(dummy)
         self.enc_hid_dim = dummy_out.shape[1]
         self.map_scale = in_sz // dummy_out.shape[-1]
@@ -55,10 +58,11 @@ class CRW(nn.Module):
 
     def zeroout_diag(self, A, zero=0):
         mask = (
-            (torch.eye(A.shape[-1]).unsqueeze(0).repeat(A.shape[0], 1, 1).bool() < 1)
+            (torch.eye(
+                A.shape[-1]).unsqueeze(0).repeat(A.shape[0], 1, 1).bool() < 1)
             .float()
             .cuda()
-            )
+        )
         return A * mask
 
     def affinity(self, x1, x2):
@@ -82,9 +86,9 @@ class CRW(nn.Module):
             A[torch.rand_like(A) < self.edgedrop_rate] = -1e20
 
         if do_sinkhorn:
-            return utils.sinkhorn_knopp((A / self.temperature).exp(), 
-                                        tol=0.01, 
-                                        max_iter=100, 
+            return utils.sinkhorn_knopp((A / self.temperature).exp(),
+                                        tol=0.01,
+                                        max_iter=100,
                                         verbose=False)
 
         # return F.softmax(A / self.temperature, dim=-1)
@@ -262,7 +266,7 @@ class CRW(nn.Module):
         """ 
         Compute superpixel node representations by spatially average pooling feature maps within 
         superpixels.
-        
+
         In summary: video + superpixel mask -> superpixel node embeddings
 
         Inputs:
@@ -280,10 +284,10 @@ class CRW(nn.Module):
         superpixel node representations (sp_feats) after being passed through the
         projection head (selfsim_fc). 
         """
-        
+
         # Compute frame feature maps using encoder
         B, T, c, h, w = x.shape
-        x = x.transpose(1, 2) # swap T(ime) and c(hannel) dimensions
+        x = x.transpose(1, 2)  # swap T(ime) and c(hannel) dimensions
         maps = self.encoder(x)
         _B, C, _T, H, W = maps.shape
 
@@ -295,17 +299,25 @@ class CRW(nn.Module):
         # n_superpixels = torch.max(sp_mask.flatten(2,3), dim=2)[0]
 
         # Make sp_mask "one-hot" from dense, with a new SP dimension;  B, T, SP, h, w
-        sp_mask = sp_mask[:, :, 0, :, :] # NOTE Segmentation (e.g. SLIC) returns a 3-channel mask 
-        idxs_sp = torch.arange(max_sp_num, device=self.args.device)[None, :, None, None]
-        sp_mask = (sp_mask.unsqueeze(2) == idxs_sp).int() # NOTE sp_mask broadcasts over SP dimension
+        # NOTE Segmentation (e.g. SLIC) returns a 3-channel mask
+        sp_mask = sp_mask[:, :, 0, :, :]
+        idxs_sp = torch.arange(max_sp_num, device=self.args.device)[
+            None, :, None, None]
+        # NOTE sp_mask broadcasts over SP dimension
+        sp_mask = (sp_mask.unsqueeze(2) == idxs_sp).int()
 
         # Create a weighted superpixel mask to apply to feature maps
         # NOTE window_shape is (B, T, SP, h//H, w//W)
         window_shape, window_step = (*sp_mask.shape[:3], h//H, w//W), h // H
-        sp_mask_wndws = view_as_windows(sp_mask, window_shape, step=window_step)[0, 0, 0] # drop singleton dims
-        sp_mask_wndws = sp_mask_wndws.sum(-1).sum(-1) # sum over windows h//H and w//W
-        sp_mask_wndws = sp_mask_wndws.permute(2, 3, 0, 1, 4) # (H, W, B, T, SP) -> (B, T, H, W, SP)
-        sp_mask_wndws = sp_mask_wndws / (sp_mask.sum(-1).sum(-1) + EPS)[:, :, None, None, :] # normalise mask by SP sizes
+        sp_mask_wndws = view_as_windows(sp_mask, window_shape, step=window_step)[
+            0, 0, 0]  # drop singleton dims
+        # sum over windows h//H and w//W
+        sp_mask_wndws = sp_mask_wndws.sum(-1).sum(-1)
+        # (H, W, B, T, SP) -> (B, T, H, W, SP)
+        sp_mask_wndws = sp_mask_wndws.permute(2, 3, 0, 1, 4)
+        sp_mask_wndws = sp_mask_wndws / \
+            (sp_mask.sum(-1).sum(-1) +
+             EPS)[:, :, None, None, :]  # normalise mask by SP sizes
         sp_mask_wndws = sp_mask_wndws.unsqueeze(4)
 
         # Compute superpixel node embeddings by multiplying feature maps by weighted mask
@@ -344,20 +356,23 @@ class CRW(nn.Module):
         B, C, T, N = q.shape
 
         if just_feats:
-            h, w = np.ceil(np.array(x.shape[-2:]) / self.map_scale).astype(np.int)
+            h, w = np.ceil(
+                np.array(x.shape[-2:]) / self.map_scale).astype(np.int)
             return (q, mm) if _N > 1 else (q, q.view(*q.shape[:-1], h, w))
 
         #################################################################
         # Compute walks
         #################################################################
-        
+
         walks = dict()
 
         As = self.affinity(q[:, :, :-1], q[:, :, 1:])
-        A12s = [self.stoch_mat(As[:, i], do_dropout=True) for i in range(T - 1)]
+        A12s = [self.stoch_mat(As[:, i], do_dropout=True)
+                for i in range(T - 1)]
 
         # Palindromes
-        A21s = [self.stoch_mat(As[:, i].transpose(-1, -2), do_dropout=True) for i in range(T - 1)]
+        A21s = [self.stoch_mat(As[:, i].transpose(-1, -2),
+                               do_dropout=True) for i in range(T - 1)]
         AAs = []
         for i in list(range(1, len(A12s))):
             g = A12s[: i + 1] + A21s[: i + 1][::-1]
@@ -381,18 +396,19 @@ class CRW(nn.Module):
             logits = torch.log(A + EPS).flatten(0, -2)
             loss = self.xent(logits, target).mean()
             acc = (torch.argmax(logits, dim=-1) == target).float().mean()
-            diags.update({f"{H} xent {name}": loss.detach(), 
+            diags.update({f"{H} xent {name}": loss.detach(),
                           f"{H} acc {name}": acc})
             xents += [loss]
 
         #################################################################
         # Visualizations
         #################################################################
-        if (np.random.random() < 0.02) and (self.vis is not None) and False:
+        if (np.random.random() < 0.05) and (self.vis is not None) and False:
             with torch.no_grad():
-                self.visualize_frame_pair(x, q, mm)
-                if _N > 1:  # and False:
-                    self.visualize_patches(x, q)
+                vid = x[0].cpu().detach().numpy()
+                mask = sp_mask[0].cpu().detach().numpy()
+                As = torch.cat(A12s).cpu().detach().numpy()
+                utils.visualize.vis_adj(vid, mask, As, self.vis.vis)
 
         loss = sum(xents) / max(1, len(xents) - 1)
 
@@ -422,8 +438,11 @@ class CRW(nn.Module):
         f1, f2 = q[:, :, t1], q[:, :, t2]
 
         A = self.affinity(f1, f2)
-        A1, A2 = self.stoch_mat(A, False, False), self.stoch_mat(A.transpose(-1, -2), False, False)
+        A1, A2 = self.stoch_mat(A, False, False), self.stoch_mat(
+            A.transpose(-1, -2), False, False)
         AA = A1 @ A2
-        xent_loss = self.xent(torch.log(AA + EPS).flatten(0, -2), self.xent_targets(AA))
+        xent_loss = self.xent(
+            torch.log(AA + EPS).flatten(0, -2), self.xent_targets(AA))
 
-        utils.visualize.frame_pair(x, q, mm, t1, t2, A, AA, xent_loss, self.vis.vis)
+        utils.visualize.frame_pair(
+            x, q, mm, t1, t2, A, AA, xent_loss, self.vis.vis)
