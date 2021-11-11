@@ -16,8 +16,6 @@ from matplotlib import cm
 from skimage.segmentation import mark_boundaries
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
-import plotly.figure_factory as ff
-import plotly.express as px
 
 
 def pca_feats(ff, K=1, solver='auto', whiten=True, img_normalize=True):
