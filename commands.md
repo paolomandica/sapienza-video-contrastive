@@ -65,6 +65,14 @@ export PATH="/any/arbitrary/path/to/binaries/or/else/here:$PATH"
 
 Check the PATH environment variable (a colon-separated string) has been correctly updated with `echo $PATH$`. It should have the new path prepended (with a trailing colon). 
 
+### Transferring Files via Secure Copy
+
+Files can be transferred to paths on servers via the SSH protocol using `scp` (secure copy). An example command is shown below, specifying a local source and server path destination. 
+
+```sh
+scp .\checkpoint.pth francolu@sapienzaAI-01.roma1.infn.it:/raid/data/francolu/temporary_storage/sp-unnorm/
+```
+
 ### Server Utilisation & Process Viewing
 
 Watch (and update) GPU usage statistics on the server. 
