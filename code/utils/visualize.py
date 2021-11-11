@@ -99,11 +99,11 @@ class Visualize(object):
     def __init__(self, args):
 
         self._env_name = args.name
-        self.vis = visdom.Visdom(
-            port=args.port,
-            server='http://%s' % args.server,
-            env=self._env_name,
-        )
+        # self.vis = visdom.Visdom(
+        #     port=args.port,
+        #     server='http://%s' % args.server,
+        #     env=self._env_name,
+        # )
         self.args = args
 
         self._init = False
@@ -211,8 +211,6 @@ def frame_pair(x, ff, mm, t1, t2, A, AA, xent_loss, viz):
 
     def spatialize(xx): return xx.view(
         *xx.shape[:-1], int(xx.shape[-1]**0.5), int(xx.shape[-1]**0.5))
-
-    breakpoint()
 
     N = AA.shape[-1]
     H = W = int(N**0.5)
@@ -344,11 +342,7 @@ def vis_adj(video, sp_mask, As, viz):
         adjs.append(go.Heatmap(z=As[t], showscale=False))
         # scatters.append(go.Scatter(x=coords, y=labels))
 
-    breakpoint()
     viz.images(torch.stack(frames), nrow=T, win='frames')
     vis_plotly(segs, T, viz, win="segs")
     vis_plotly(adjs, T, viz, win="adjs")
     # vis_plotly(scatters, T, viz)
-    breakpoint()
-
-    breakpoint()

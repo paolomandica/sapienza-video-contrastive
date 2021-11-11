@@ -26,7 +26,7 @@ from teacherstudent import CRWTeacherStudent
 torch.autograd.set_detect_anomaly(True)
 
 # Disable wandb syncing to the cloud
-os.environ['WANDB_MODE'] = 'offline'
+# os.environ['WANDB_MODE'] = 'offline'
 
 ####################################################################################################
 # train_one_epoch function
