@@ -56,6 +56,7 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
             output, loss, diagnostics = model(video, None, None) if not args.teacher_student else model(video)
         else:
             sp_mask = sp_mask.to(device)
+            orig = orig.to(device)
             max_sp_num = len(torch.unique(sp_mask))
             output, loss, diagnostics = model(orig, sp_mask, max_sp_num)
         
