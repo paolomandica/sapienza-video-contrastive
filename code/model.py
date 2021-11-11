@@ -403,7 +403,7 @@ class CRW(nn.Module):
         #################################################################
         # Visualizations
         #################################################################
-        if (np.random.random() < 0.05) and (self.vis is not None):
+        if (np.random.random() < 0.9) and (self.vis is not None):
             with torch.no_grad():
                 # self.visualize_frame_pair(x, q, mm)
                 # if _N > 1 and False:

@@ -17,7 +17,7 @@ python -W ignore train.py --data-path $path_to_kinetics_sample \
 --frame-aug grid --dropout 0.1 --clip-len 4 --temp 0.05 \
 --model-type "scratch" --workers 30 --batch-size 6 --lr 0.0001 \
 --epochs 10 \
---sp-method slic --num-sp 20 --prob 0 \
+--sp-method slic --num-sp 16 --prob 0 \
 --visualize --port 8095
 
 # --data-parallel --randomise-superpixels

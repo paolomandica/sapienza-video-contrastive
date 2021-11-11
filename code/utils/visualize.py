@@ -13,6 +13,7 @@ import torch
 
 import matplotlib.pyplot as plt
 from matplotlib import cm
+from skimage.segmentation import mark_boundaries
 
 
 def pca_feats(ff, K=1, solver='auto', whiten=True, img_normalize=True):
@@ -285,7 +286,6 @@ def frame_pair(x, ff, mm, t1, t2, A, AA, xent_loss, viz):
 
 
 def vis_adj(video, sp_mask, As, viz):
-    from skimage.segmentation import mark_boundaries
     T, C, H, W = video.shape
 
     frames = []
@@ -299,6 +299,7 @@ def vis_adj(video, sp_mask, As, viz):
 
         X = []
         Y = []
+        f, ax = plt.subplots()
 
         for sp in np.unique(seg):
             thresh = (seg == sp)*255
@@ -312,20 +313,18 @@ def vis_adj(video, sp_mask, As, viz):
                 x = int(M["m10"] / M["m00"])
                 y = int(M["m01"] / M["m00"])
 
-                # calculate x,y coordinate of center
-                X.append(x)
-                Y.append(y)
-
         # display the image
-        img_bound = mark_boundaries(np.transpose(img, (1, 2, 0)), seg)
+        img_bound = mark_boundaries(np.transpose(img, (1, 2, 0)), seg,
+                                    color=(239, 255, 0), mode="thick")
         img_bound = torch.Tensor(img_bound).permute(2, 0, 1)
+
         frames.append(img_bound)
 
-        segs.append(torch.Tensor(sp_mask))
+        # TODO: visualize all at once
+        viz.heatmap(torch.Tensor(As[t]))
+        viz.contour(torch.Tensor(seg))
 
         # ax[1, t].scatter(X, Y, color='red')
 
-        # breakpoint()
-
+    breakpoint()
     viz.images(torch.stack(frames), nrow=4, win='frames')
-    # viz.images(torch.stack(segs), nrow=4, win='segs')

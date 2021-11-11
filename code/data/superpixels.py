@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import cv2
 
 from fast_slic import Slic
 from skimage.segmentation import felzenszwalb
@@ -7,6 +8,7 @@ from skimage.segmentation import felzenszwalb
 
 def compute_sp_slic(img, num_components):
     slic = Slic(num_components=num_components, compactness=30)
+    img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
     img = img.astype(dtype="uint8", order="C")
     seg = slic.iterate(img).astype(dtype="uint8")
     return seg
@@ -33,8 +35,10 @@ def compute_mask(video, sp_method, num_components, p, randomise_superpixels, ran
             img = video[t, :, :, :]
             img = img.permute(1, 2, 0).cpu().numpy()
             if method == "slic":
-                low, high = num_components - randomise_superpixels_range//2, num_components + randomise_superpixels_range//2
-                segments = compute_sp_slic(img, torch.randint(low=low, high=high, size=(1,)).item())
+                low, high = num_components - randomise_superpixels_range//2, num_components + \
+                    randomise_superpixels_range//2
+                segments = compute_sp_slic(img, torch.randint(
+                    low=low, high=high, size=(1,)).item())
             elif method == "fh":
                 segments = compute_sp_FH(img)
             sp_tensor_time.append(torch.from_numpy(segments))
