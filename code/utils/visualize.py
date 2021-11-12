@@ -16,6 +16,7 @@ from matplotlib import cm
 from skimage.segmentation import mark_boundaries
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
+import plotly.express as px
 
 
 def pca_feats(ff, K=1, solver='auto', whiten=True, img_normalize=True):
@@ -97,11 +98,11 @@ class Visualize(object):
     def __init__(self, args):
 
         self._env_name = args.name
-        # self.vis = visdom.Visdom(
-        #     port=args.port,
-        #     server='http://%s' % args.server,
-        #     env=self._env_name,
-        # )
+        self.vis = visdom.Visdom(
+            port=args.port,
+            server='http://%s' % args.server,
+            env=self._env_name,
+        )
         self.args = args
 
         self._init = False
@@ -109,7 +110,7 @@ class Visualize(object):
     def wandb_init(self, model):
         if not self._init:
             self._init = True
-            wandb.init(project="randomise-superpixels-no-norm",
+            wandb.init(project="superpixels-no-norm",
                        entity="sapienzavideocontrastive",
                        group="release",
                        config=self.args)
@@ -300,8 +301,6 @@ def vis_adj(video, sp_mask, As, viz):
     frames = []
     adjs = []
     segs = []
-    scatters = []
-    scatters_labels = []
 
     for t in range(T):
 
@@ -335,12 +334,14 @@ def vis_adj(video, sp_mask, As, viz):
 
         frames.append(img_bound)
 
-        # TODO: visualize all at once
-        segs.append(go.Contour(z=seg, showscale=False))
+        seg = cv2.normalize(seg, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+        segs.append(torch.Tensor(seg).unsqueeze(0))
         adjs.append(go.Heatmap(z=As[t], showscale=False))
         # scatters.append(go.Scatter(x=coords, y=labels))
 
+    breakpoint()
     viz.images(torch.stack(frames), nrow=T, win='frames')
-    vis_plotly(segs, T, viz, win="segs")
+    viz.images(torch.stack(segs), nrow=T, win="segs")
+    # vis_plotly(segs, T, viz, win="segs")
     vis_plotly(adjs, T, viz, win="adjs")
     # vis_plotly(scatters, T, viz)
