@@ -98,11 +98,11 @@ class Visualize(object):
     def __init__(self, args):
 
         self._env_name = args.name
-        # self.vis = visdom.Visdom(
-        #     port=args.port,
-        #     server='http://%s' % args.server,
-        #     env=self._env_name,
-        # )
+        self.vis = visdom.Visdom(
+            port=args.port,
+            server='http://%s' % args.server,
+            env=self._env_name,
+        )
         self.args = args
 
         self._init = False
@@ -324,20 +324,20 @@ def vis_adj(video, sp_mask, As, viz, orig_unnorm):
 
                 X.append(x)
                 Y.append(y)
-                ax[t].text(x, y, str(sp), fontsize=10)
+                ax[t].text(x, y, str(sp), fontsize=14, color="pink")
 
         # display the image
         img_bound = mark_boundaries(np.transpose(img, (1, 2, 0)), seg,
                                     color=(239, 255, 0), mode="thick")
-        img_bound = torch.Tensor(img_bound).permute(2, 0, 1)
+        img_bound = torch.Tensor(img_bound)  # .permute(2, 0, 1)
 
-        frames.append(img_bound)
-
-        ax[t].imshow(seg, aspect='auto')
+        ax[t].imshow(img_bound, aspect='auto')
+        # frames.append(img_bound.permute(2, 0, 1))
         ax[t].scatter(X, Y, color='red')
-        adjs.append(go.Heatmap(z=As[t], showscale=False))
+        if t > 0:
+            adjs.append(go.Heatmap(z=As[t-1], showscale=False))
 
     breakpoint()
-    viz.images(torch.stack(frames), nrow=T, win='frames')
-    viz.matplot(fig)
+    # viz.images(torch.stack(frames), nrow=T, win='frames')
+    viz.matplot(fig, win="scatter")
     vis_plotly(adjs, T, viz, win="adjs")
