@@ -332,7 +332,7 @@ class CRW(nn.Module):
 
         return sp_feats, maps
 
-    def forward(self, x, sp_mask, max_sp_num, just_feats=False):
+    def forward(self, x, sp_mask, max_sp_num, just_feats=False, orig_unnorm=None):
         """
         Input is B x T x N*C x H x W, where either
            N>1 -> list of patches of images
@@ -408,7 +408,7 @@ class CRW(nn.Module):
                 vid = x[0].cpu().detach().numpy()
                 mask = sp_mask[0].cpu().detach().numpy()
                 As = torch.cat(A12s).cpu().detach().numpy()
-                utils.visualize.vis_adj(vid, mask, As, self.vis.vis)
+                utils.visualize.vis_adj(vid, mask, As, self.vis.vis, orig_unnorm)
 
         loss = sum(xents) / max(1, len(xents) - 1)
 

@@ -49,7 +49,7 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
     if vis is not None:
         vis.wandb_init(model)
 
-    for step, ((video, orig), sp_mask) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for step, ((video, orig, orig_unnorm), sp_mask) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         start_time = time.time()
 
         grid = np.random.choice([True, False], p=[prob, 1-prob])
@@ -57,12 +57,12 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
         if grid:
             video = video.to(device)
             output, loss, diagnostics = model(
-                video, None, None) if not args.teacher_student else model(video)
+                video, None, None, None) if not args.teacher_student else model(video)
         else:
             sp_mask = sp_mask.to(device)
             orig = orig.to(device)
             max_sp_num = len(torch.unique(sp_mask))
-            output, loss, diagnostics = model(orig, sp_mask, max_sp_num)
+            output, loss, diagnostics = model(orig, sp_mask, max_sp_num, orig_unnorm)
 
         loss = loss.mean()
 
@@ -86,7 +86,24 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
             video.shape[0] / (time.time() - start_time))
         lr_scheduler.step()
 
+        ##### CHANGE COMPACTNESS DURING THE EPOCH
+        if step > len(data_loader)//2 and epoch < 15:
+            compactness = data_loader.dataset.get_compactness()
+            data_loader.dataset.set_compactness(compactness - 10)
+
     checkpoint_fn()
+
+
+    # #### CHANGE COMPACTNESS EACH EPOCH
+    # if epoch < 10:
+    #     compactness = data_loader.dataset.get_compactness()
+    #     data_loader.dataset.set_compactness(compactness - 10)
+    # elif epoch < 15 and epoch >= 10:
+    #     compactness = data_loader.dataset.get_compactness()
+    #     data_loader.dataset.set_compactness(compactness - 5)
+    # else:
+    #     compactness = data_loader.dataset.get_compactness()
+    #     data_loader.dataset.set_compactness(compactness - 2)
 
 ####################################################################################################
 # Minor functions
@@ -218,6 +235,8 @@ def main(args):
         dataset, batch_size=args.batch_size,  # shuffle=not args.fast_test,
         sampler=train_sampler, num_workers=args.workers//2,
         pin_memory=True, collate_fn=collate_fn)
+
+    data_loader.dataset.set_compactness(args.compactness)
 
     # Visualisation
     vis = utils.visualize.Visualize(args) if args.visualize else None
