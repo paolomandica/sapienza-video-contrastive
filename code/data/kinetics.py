@@ -93,6 +93,12 @@ class Kinetics400(VisionDataset):
     def __len__(self):
         return self.video_clips.num_clips()
 
+    def set_compactness(self, compactness):
+        self.compactness = compactness
+
+    def get_compactness(self):
+        return self.compactness
+
     def __getitem__(self, idx):
         success = False
         while not success:
@@ -116,10 +122,11 @@ class Kinetics400(VisionDataset):
                                       self.num_components, 
                                       self.prob, 
                                       self.randomise_superpixels, 
-                                      self.randomise_superpixels_range)
+                                      self.randomise_superpixels_range,
+                                      self.compactness)
         else:
             video_mask = torch.empty(0)
 
-        video = video[0], video[1]
+        video = video[0], video[1], video[2]
 
         return video, video_mask, audio, label

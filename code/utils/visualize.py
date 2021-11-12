@@ -295,7 +295,7 @@ def vis_plotly(plots, T, viz, win=None):
     viz.update_window_opts(win, opts=dict(height=400, width=900))
 
 
-def vis_adj(video, sp_mask, As, viz):
+def vis_adj(video, sp_mask, As, viz, orig_unnorm):
     T, C, H, W = video.shape
 
     fig, ax = plt.subplots(1, T, figsize=(12, 6))
@@ -305,7 +305,7 @@ def vis_adj(video, sp_mask, As, viz):
 
     for t in range(T):
 
-        img = video[t]
+        img = orig_unnorm[t]
         seg = sp_mask[t, 0]
 
         X = []
