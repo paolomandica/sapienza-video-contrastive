@@ -298,18 +298,18 @@ def vis_plotly(plots, T, viz, win=None):
 def vis_adj(video, sp_mask, As, viz):
     T, C, H, W = video.shape
 
+    fig, ax = plt.subplots(1, T, figsize=(12, 6))
+
     frames = []
     adjs = []
-    segs = []
 
     for t in range(T):
 
         img = video[t]
         seg = sp_mask[t, 0]
 
-        coords = []
-        labels = []
-        f, ax = plt.subplots()
+        X = []
+        Y = []
 
         for sp in np.unique(seg):
             thresh = (seg == sp)*255
@@ -323,9 +323,9 @@ def vis_adj(video, sp_mask, As, viz):
                 x = int(M["m10"] / M["m00"])
                 y = int(M["m01"] / M["m00"])
 
-                coords.append((x, y))
-
-            labels.append(sp)
+                X.append(x)
+                Y.append(y)
+                ax[t].text(x, y, str(sp), fontsize=10)
 
         # display the image
         img_bound = mark_boundaries(np.transpose(img, (1, 2, 0)), seg,
@@ -334,14 +334,11 @@ def vis_adj(video, sp_mask, As, viz):
 
         frames.append(img_bound)
 
-        seg = cv2.normalize(seg, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-        segs.append(torch.Tensor(seg).unsqueeze(0))
+        ax[t].imshow(seg)
+        ax[t].scatter(X, Y, color='red')
         adjs.append(go.Heatmap(z=As[t], showscale=False))
-        # scatters.append(go.Scatter(x=coords, y=labels))
 
     breakpoint()
     viz.images(torch.stack(frames), nrow=T, win='frames')
-    viz.images(torch.stack(segs), nrow=T, win="segs")
-    # vis_plotly(segs, T, viz, win="segs")
+    viz.matplot(fig)
     vis_plotly(adjs, T, viz, win="adjs")
-    # vis_plotly(scatters, T, viz)

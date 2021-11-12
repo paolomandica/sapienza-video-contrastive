@@ -11,6 +11,7 @@ checkpoints
 code/wandb
 code/auto
 cached_data
+temp
 
 ### files ###
 *.zip

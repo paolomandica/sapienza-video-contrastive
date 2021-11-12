@@ -1,8 +1,5 @@
 # Checkpoint to Evaluate
-checkpoint="./checkpoints/_drop0.1-len4-ftranscrop-faugnone-optimadam-temp0.05-fdrop0.0-lr0.0001-mlp0-spslic-nsp30-p0.0/checkpoint.pth"
-
-# Delete Contents of Results Directory
-# rm -rf ../results/*
+checkpoint="./checkpoints/_drop0.1-len4-ftranscrop-faugnone-optimadam-temp0.05-fdrop0.0-lr0.0003-mlp0-spslic-nsp16-p0.0/model_0.pth"
 
 # Results Output Directories
 savepath="../results/masks/"
@@ -11,6 +8,9 @@ outpath="../results/converted/"
 # Davis Paths
 vallist="/data_volume/sapienza-video-contrastive/code/eval/davis_vallist.txt"
 dataset="/data_volume/data/davis_val/"
+
+# Delete Contents of Results Directory
+rm -rf ../results/*
 
 # # Pretrained Model Paths
 # pretrained_checkpoint="../pretrained.pth"
