@@ -98,11 +98,11 @@ class Visualize(object):
     def __init__(self, args):
 
         self._env_name = args.name
-        self.vis = visdom.Visdom(
-            port=args.port,
-            server='http://%s' % args.server,
-            env=self._env_name,
-        )
+        # self.vis = visdom.Visdom(
+        #     port=args.port,
+        #     server='http://%s' % args.server,
+        #     env=self._env_name,
+        # )
         self.args = args
 
         self._init = False
@@ -290,22 +290,21 @@ def vis_plotly(plots, T, viz, win=None):
     fig = make_subplots(rows=1, cols=T)
     for i, plot in enumerate(plots):
         fig.add_trace(plot, 1, i+1)
-    fig.update_layout(height=300, width=800)
     viz.plotlyplot(fig, win=win)
-    viz.update_window_opts(win, opts=dict(height=400, width=900))
 
 
 def vis_adj(video, sp_mask, As, viz, orig_unnorm):
     T, C, H, W = video.shape
 
-    fig, ax = plt.subplots(1, T, figsize=(12, 6))
+    fig, ax = plt.subplots(1, T, figsize=(16, 4))
 
     frames = []
     adjs = []
 
     for t in range(T):
 
-        img = orig_unnorm[t]
+        # img = orig_unnorm[t]
+        img = video[t]
         seg = sp_mask[t, 0]
 
         X = []
@@ -334,7 +333,7 @@ def vis_adj(video, sp_mask, As, viz, orig_unnorm):
 
         frames.append(img_bound)
 
-        ax[t].imshow(seg)
+        ax[t].imshow(seg, aspect='auto')
         ax[t].scatter(X, Y, color='red')
         adjs.append(go.Heatmap(z=As[t], showscale=False))
 

@@ -403,12 +403,13 @@ class CRW(nn.Module):
         #################################################################
         # Visualizations
         #################################################################
-        if (np.random.random() < 1) and (self.vis is not None):
+        if (np.random.random() < 1) and (self.vis is not None) and False:
             with torch.no_grad():
                 vid = x[0].cpu().detach().numpy()
                 mask = sp_mask[0].cpu().detach().numpy()
                 As = torch.cat(A12s).cpu().detach().numpy()
-                utils.visualize.vis_adj(vid, mask, As, self.vis.vis, orig_unnorm)
+                utils.visualize.vis_adj(
+                    vid, mask, As, self.vis.vis, orig_unnorm[0].cpu().detach().numpy())
 
         loss = sum(xents) / max(1, len(xents) - 1)
 

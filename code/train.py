@@ -62,7 +62,8 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
             sp_mask = sp_mask.to(device)
             orig = orig.to(device)
             max_sp_num = len(torch.unique(sp_mask))
-            output, loss, diagnostics = model(orig, sp_mask, max_sp_num, orig_unnorm)
+            output, loss, diagnostics = model(
+                orig, sp_mask, max_sp_num, orig_unnorm=orig_unnorm)
 
         loss = loss.mean()
 
@@ -86,13 +87,12 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
             video.shape[0] / (time.time() - start_time))
         lr_scheduler.step()
 
-        ##### CHANGE COMPACTNESS DURING THE EPOCH
+        # CHANGE COMPACTNESS DURING THE EPOCH
         if step > len(data_loader)//2 and epoch < 15:
             compactness = data_loader.dataset.get_compactness()
             data_loader.dataset.set_compactness(compactness - 10)
 
     checkpoint_fn()
-
 
     # #### CHANGE COMPACTNESS EACH EPOCH
     # if epoch < 10:

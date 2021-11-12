@@ -47,7 +47,7 @@ def compute_mask(video, sp_method, num_components, p, randomise_superpixels, ran
             img = video[t, :, :, :]
             img = img.permute(1, 2, 0).cpu().numpy()
             if method == "slic":
-                segments = compute_sp_slic(img, num_components)
+                segments = compute_sp_slic(img, num_components, compactness)
             elif method == "fh":
                 segments = compute_sp_FH(img)
             sp_tensor_time.append(torch.from_numpy(segments))
