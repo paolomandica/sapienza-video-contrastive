@@ -56,6 +56,7 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
             # output, loss, diagnostics = model(video, None, None) if not args.teacher_student else model(video)
         else:
             sp_mask = sp_mask.to(device)
+            orig = orig.to(device)
             max_sp_num = len(torch.unique(sp_mask))
             output, loss, diagnostics = model(orig, sp_mask, max_sp_num)
         
@@ -64,7 +65,7 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
         # if vis is not None and np.random.random() < 0.01:
         if vis is not None:
             vis.log(dict(loss=loss.mean().item()))
-            # vis.log({k: v.mean().item() for k, v in diagnostics.items()}) # diagnostics is None
+            vis.log({k: v.mean().item() for k, v in diagnostics.items()}) # diagnostics is None
 
         # NOTE Stochastic checkpointing has been retained
         if checkpoint_fn is not None and np.random.random() < 0.005:

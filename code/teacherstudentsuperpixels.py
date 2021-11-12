@@ -725,5 +725,7 @@ class CRWSuperpixelTeacherStudent(nn.Module):
         
         loss = alpha * loss_stdnt + (1 - alpha) * loss_ts
 
-        return None, loss, None # Hack to be able to use same training script
+        # Hack to be able to use same training script
+        # NOTE: We are logging the overall Teacher-Student loss but the Student model's diagnostics
+        return None, loss, diags_stdnt 
 
