@@ -18,7 +18,8 @@ python -W ignore train.py --data-path $path_to_kinetics_sample \
 --model-type "scratch" --workers 60 --batch-size 64 --lr 0.0003 \
 --epochs 20 \
 --sp-method slic --num-sp 49 --prob 0 \
---compactness 200 --data-parallel --output-dir "./checkpoints/sp_unnorm_scratch/"
+--compactness 120 --data-parallel --output-dir "./checkpoints/sp_unnorm_pretr/" \
+--partial-reload "../pretrained.pth" 
 # --visualize --port 8094 \
 # --partial-reload "../pretrained.pth" 
 # --randomise-superpixels --data-parallel --port 8095

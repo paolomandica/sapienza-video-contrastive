@@ -26,7 +26,7 @@ from teacherstudent import CRWTeacherStudent
 torch.autograd.set_detect_anomaly(True)
 
 # Disable wandb syncing to the cloud
-os.environ['WANDB_MODE'] = 'offline'
+# os.environ['WANDB_MODE'] = 'offline'
 
 ####################################################################################################
 # train_one_epoch function
@@ -95,8 +95,8 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
     checkpoint_fn()
 
     # #### CHANGE COMPACTNESS EACH EPOCH
-    dict_compact = {0:200, 1:150, 2:100, 3:80, 4:70, 5:60, 6:50,
-                    7:45, 8:40, 9:35, 10:30, 11:25, 12:20}
+    dict_compact = {0:120, 1:100, 2:85, 3:70, 4:60, 5:50, 6:40,
+                    7:30, 8:25, 9:20}
 
     if epoch in dict_compact.keys():
         compactness = dict_compact[epoch]

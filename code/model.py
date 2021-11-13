@@ -403,7 +403,7 @@ class CRW(nn.Module):
         #################################################################
         # Visualizations
         #################################################################
-        if (np.random.random() < 1) and (self.vis is not None):
+        if (np.random.random() < 1) and (self.vis is not None) and False:
             with torch.no_grad():
                 vid = x[0].cpu().detach().numpy()
                 mask = sp_mask[0].cpu().detach().numpy()
