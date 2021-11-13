@@ -3,14 +3,15 @@ import torch
 import cv2
 
 from fast_slic import Slic
-from skimage.segmentation import felzenszwalb
+from skimage.segmentation import felzenszwalb, slic
 
 
 def compute_sp_slic(img, num_components, compactness):
-    slic = Slic(num_components=num_components, compactness=compactness)
+    #slic = Slic(num_components=num_components, compactness=compactness)
     img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-    img = img.astype(dtype="uint8", order="C")
-    seg = slic.iterate(img).astype(dtype="uint8")
+    #img = img.astype(dtype="uint8", order="C")
+    #seg = slic.iterate(img).astype(dtype="uint8")
+    seg = slic(img, n_segments=num_components, compactness=compactness)
     return seg
 
 

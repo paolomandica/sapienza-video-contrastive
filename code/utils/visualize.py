@@ -296,15 +296,16 @@ def vis_plotly(plots, T, viz, win=None):
 def vis_adj(video, sp_mask, As, viz, orig_unnorm):
     T, C, H, W = video.shape
 
-    fig, ax = plt.subplots(1, T, figsize=(16, 4))
+    fig, ax = plt.subplots(2, T, figsize=(20, 10))
 
     frames = []
     adjs = []
 
     for t in range(T):
 
-        # img = orig_unnorm[t]
-        img = video[t]
+        img = orig_unnorm[t]
+        img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+        # img = video[t]
         seg = sp_mask[t, 0]
 
         X = []
@@ -324,20 +325,21 @@ def vis_adj(video, sp_mask, As, viz, orig_unnorm):
 
                 X.append(x)
                 Y.append(y)
-                ax[t].text(x, y, str(sp), fontsize=14, color="pink")
+                ax[1,t].text(x, y, str(sp), fontsize=14, color="pink")
 
         # display the image
         img_bound = mark_boundaries(np.transpose(img, (1, 2, 0)), seg,
                                     color=(239, 255, 0), mode="thick")
         img_bound = torch.Tensor(img_bound)  # .permute(2, 0, 1)
+        #frames.append(img_bound.permute(2, 0, 1))
+        ax[0,t].imshow(img_bound)
 
-        ax[t].imshow(img_bound, aspect='auto')
-        # frames.append(img_bound.permute(2, 0, 1))
-        ax[t].scatter(X, Y, color='red')
+        ax[1,t].imshow(seg, aspect='auto')
+        ax[1,t].scatter(X, Y, color='red')
         if t > 0:
             adjs.append(go.Heatmap(z=As[t-1], showscale=False))
 
     breakpoint()
-    # viz.images(torch.stack(frames), nrow=T, win='frames')
+    #viz.images(torch.stack(frames), nrow=T, win='frames')
     viz.matplot(fig, win="scatter")
     vis_plotly(adjs, T, viz, win="adjs")

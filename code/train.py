@@ -88,13 +88,23 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
         lr_scheduler.step()
 
         # CHANGE COMPACTNESS DURING THE EPOCH
-        if step > len(data_loader)//2 and epoch < 15:
-            compactness = data_loader.dataset.get_compactness()
-            data_loader.dataset.set_compactness(compactness - 10)
+        # if step > len(data_loader)//2 and epoch < 15:
+        #     compactness = data_loader.dataset.get_compactness()
+        #     data_loader.dataset.set_compactness(compactness - 10)
 
     checkpoint_fn()
 
     # #### CHANGE COMPACTNESS EACH EPOCH
+    dict_compact = {0:200, 1:150, 2:100, 3:80, 4:70, 5:60, 6:50,
+                    7:45, 8:40, 9:35, 10:30, 11:25, 12:20}
+
+    if epoch in dict_compact.keys():
+        compactness = dict_compact[epoch]
+    else:
+        compactness = 20
+    
+    data_loader.dataset.set_compactness(compactness)
+
     # if epoch < 10:
     #     compactness = data_loader.dataset.get_compactness()
     #     data_loader.dataset.set_compactness(compactness - 10)
@@ -236,6 +246,7 @@ def main(args):
         sampler=train_sampler, num_workers=args.workers//2,
         pin_memory=True, collate_fn=collate_fn)
 
+    print("Set Compactness at:", args.compactness)
     data_loader.dataset.set_compactness(args.compactness)
 
     # Visualisation

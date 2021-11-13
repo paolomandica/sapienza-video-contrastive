@@ -201,7 +201,7 @@ def train_args():
                         help='number of components for SLIC')
     parser.add_argument('--prob', default=1.0, type=float,
                         help='sampling probability of patches or superpixels. 1 for patches; 0 for superpixels')
-    parser.add_argument('--compactness', default=100,
+    parser.add_argument('--compactness', default=200,
                         type=int, help='initial compactness')
 
     # Variable Superpixels
