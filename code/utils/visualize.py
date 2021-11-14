@@ -98,11 +98,11 @@ class Visualize(object):
     def __init__(self, args):
 
         self._env_name = args.name
-        self.vis = visdom.Visdom(
-            port=args.port,
-            server='http://%s' % args.server,
-            env=self._env_name,
-        )
+        # self.vis = visdom.Visdom(
+        #     port=args.port,
+        #     server='http://%s' % args.server,
+        #     env=self._env_name,
+        # )
         self.args = args
 
         self._init = False
