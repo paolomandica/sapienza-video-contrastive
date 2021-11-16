@@ -52,18 +52,13 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
     for step, ((video, orig, orig_unnorm), sp_mask) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         start_time = time.time()
 
-        grid = np.random.choice([True, False], p=[prob, 1-prob])
+        video = video.to(device)
+        orig = orig.to(device)
+        sp_mask = sp_mask.to(device)
+        max_sp_num = len(torch.unique(sp_mask))
 
-        if grid:
-            video = video.to(device)
-            output, loss, diagnostics = model(
-                video, None, None, None) if not args.teacher_student else model(video)
-        else:
-            sp_mask = sp_mask.to(device)
-            orig = orig.to(device)
-            max_sp_num = len(torch.unique(sp_mask))
-            output, loss, diagnostics = model(
-                orig, sp_mask, max_sp_num, orig_unnorm=orig_unnorm)
+        output, loss, diagnostics = model(
+            video, sp_mask, max_sp_num, orig_unnorm=orig_unnorm)
 
         loss = loss.mean()
 
@@ -71,6 +66,7 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
         if vis is not None:
             vis.log(dict(loss=loss.mean().item()))
             vis.log({k: v.mean().item() for k, v in diagnostics.items()})
+            vis.log(dict(lr=optimizer.param_groups[0]["lr"]))
 
         # NOTE Stochastic checkpointing has been retained
         if checkpoint_fn is not None and np.random.random() < 0.005:
@@ -95,13 +91,13 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
     checkpoint_fn()
 
     # #### CHANGE COMPACTNESS EACH EPOCH
-    dict_compact = {0:120, 1:90, 2:70, 3:50, 4:35, 5:25}
+    dict_compact = {0: 120, 1: 90, 2: 70, 3: 50, 4: 35, 5: 25}
 
     if epoch in dict_compact.keys():
         compactness = dict_compact[epoch]
     else:
         compactness = 20
-    
+
     data_loader.dataset.set_compactness(compactness)
 
     # if epoch < 10:

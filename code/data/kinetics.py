@@ -59,7 +59,7 @@ class Kinetics400(VisionDataset):
         sp_method=None,
         num_components=None,
         prob=None,
-        randomise_superpixels=None, 
+        randomise_superpixels=None,
         randomise_superpixels_range=None
     ):
         super(Kinetics400, self).__init__(root)
@@ -117,11 +117,11 @@ class Kinetics400(VisionDataset):
 
         # compute mask
         if self.sp_method != 'none':
-            video_mask = compute_mask(torch.Tensor(video[2]), 
-                                      self.sp_method, 
-                                      self.num_components, 
-                                      self.prob, 
-                                      self.randomise_superpixels, 
+            video_mask = compute_mask(torch.Tensor(video[2]),
+                                      self.sp_method,
+                                      self.num_components,
+                                      self.prob,
+                                      self.randomise_superpixels,
                                       self.randomise_superpixels_range,
                                       self.compactness)
         else:
