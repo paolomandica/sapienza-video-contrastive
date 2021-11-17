@@ -224,6 +224,7 @@ class CRW(nn.Module):
         Parameters
         ----------
         x : torch Tensor with dimensions (B, C, T, N)
+            Tensor containing patches embeddings.
         sp_mask : torch Tensor with dimensions (B, T, C, H, W)
             Each (C, H, W) corresponds to a superpixels mask.
         max_sp_num : int
@@ -239,47 +240,47 @@ class CRW(nn.Module):
         # Make sp_mask "one-hot" from dense, with a new SP dimension;  B, T, SP, h, w
         # NOTE Segmentation (e.g. SLIC) returns a 3-channel mask (each channel is identical)
         sp_mask = sp_mask[:, :, 0, :, :]
-        idxs_sp = torch.arange(max_sp_num, device=self.args.device)[
-            None, :, None, None]
+        idxs_sp = torch.arange(max_sp_num, device=self.args.device)[None, :, None, None]
         # NOTE sp_mask broadcasts over SP dimension
         sp_mask = (sp_mask.unsqueeze(2) == idxs_sp).int()
 
-        # Create a weighted superpixel mask to apply to patches embeddings
+        # Compute windows step and shape to perform the view_as_windows function
+        # and to compute the scaling mask
         # overlap = 1 == no overlapping
         # overlap = 0 == complete overlapping
         shape = self.args.patch_size
         overlap = 0.5
         window_step = int(self.args.patch_size[0] * overlap)
-        window_shape = (
-            *sp_mask.shape[:3], self.args.patch_size[0], self.args.patch_size[1])
+        window_shape = (*sp_mask.shape[:3], self.args.patch_size[0], self.args.patch_size[1])
 
-        # using a scaling mask allows to divide each superpixel mask
+        # Using a scaling mask allows to divide each superpixel mask
         # by a factor which increases with overlapping, since we want
         # the sum of weights of all the patches for each superpixel
         # to be equal to 1
-        scaling_mask = self.compute_scaling_mask(
-            sp_mask, window_shape, window_step)
-        sp_mask = sp_mask / scaling_mask
+        scaling_mask = self.compute_scaling_mask(sp_mask, window_shape, window_step)
+        # Create a weighted superpixel mask to apply to patches embeddings
+        sp_mask_scaled = sp_mask / scaling_mask
 
-        sp_mask_wndws = view_as_windows(sp_mask, window_shape, step=window_step)[
+        # Compute the intersection of each superpixel with all the patches
+        # 1. view_as_windows to isolate the part of each superpixel present
+        # in each patch
+        sp_mask_wndws = view_as_windows(sp_mask_scaled, window_shape, step=window_step)[
             0, 0, 0]  # drop singleton dims
-
-        # sum over windows h//H and w//W
+        # 2. sum over H and W of patches
+        # This gives the number of pixels belonging to each superpixel in each patch
         sp_mask_wndws = sp_mask_wndws.sum(-1).sum(-1)
         # (H, W, B, T, SP) -> (B, T, H, W, SP)
         sp_mask_wndws = sp_mask_wndws.permute(2, 3, 0, 1, 4)
 
         sp_mask_wndws = sp_mask_wndws / \
-            (sp_mask.sum(-1).sum(-1) +
-             EPS)[:, :, None, None, :]  # normalise mask by SP sizes
+            (sp_mask.sum(-1).sum(-1) + EPS)[:, :, None, None, :]  # normalise mask by SP sizes
 
         sp_mask_wndws = sp_mask_wndws.unsqueeze(1).flatten(3, 4)
 
-        x_reshaped = x.unsqueeze(-1)
         # Compute superpixel node embeddings by multiplying patches embeddings by weighted mask
-        sp_feats = (sp_mask_wndws * x_reshaped).mean(3)
+        # and then summing the embedding vectors
+        sp_feats = (sp_mask_wndws * x.unsqueeze(-1)).sum(3)
 
-        breakpoint()
         return sp_feats
 
     def forward(self, x, sp_mask, max_sp_num, just_feats=False, orig_unnorm=None):

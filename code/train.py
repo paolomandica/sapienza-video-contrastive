@@ -91,14 +91,14 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
     checkpoint_fn()
 
     # #### CHANGE COMPACTNESS EACH EPOCH
-    dict_compact = {0: 120, 1: 90, 2: 70, 3: 50, 4: 35, 5: 25}
+    # dict_compact = {0: 120, 1: 90, 2: 70, 3: 50, 4: 35, 5: 25}
 
-    if epoch in dict_compact.keys():
-        compactness = dict_compact[epoch]
-    else:
-        compactness = 20
+    # if epoch in dict_compact.keys():
+    #     compactness = dict_compact[epoch]
+    # else:
+    #     compactness = 20
 
-    data_loader.dataset.set_compactness(compactness)
+    # data_loader.dataset.set_compactness(compactness)
 
     # if epoch < 10:
     #     compactness = data_loader.dataset.get_compactness()
