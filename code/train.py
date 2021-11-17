@@ -18,8 +18,9 @@ from torchvision.datasets.samplers.clip_sampler import RandomClipSampler, Unifor
 import utils
 from model import CRW
 
+
 def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, print_freq,
-    vis=None, checkpoint_fn=None):
+                    vis=None, checkpoint_fn=None):
 
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -35,14 +36,13 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
         output, loss, diagnostics = model(video)
         loss = loss.mean()
 
-        if vis is not None and np.random.random() < 0.01:
-            vis.wandb_init(model)
+        if vis is not None and np.random.random() < 0.1:
             vis.log(dict(loss=loss.mean().item()))
-            vis.log({k: v.mean().item() for k,v in diagnostics.items()})
+            vis.log({k: v.mean().item() for k, v in diagnostics.items()})
 
         if checkpoint_fn is not None and np.random.random() < 0.005:
             checkpoint_fn()
- 
+
         optimizer.zero_grad()
         loss.backward()
         # print(torch.nn.utils.clip_grad_norm_(model.parameters(), 1), 'grad norm')
@@ -54,6 +54,7 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device, epoch, 
 
     checkpoint_fn()
 
+
 def _get_cache_path(filepath):
     import hashlib
     h = hashlib.sha1(filepath.encode()).hexdigest()
@@ -61,10 +62,12 @@ def _get_cache_path(filepath):
     cache_path = os.path.expanduser(cache_path)
     return cache_path
 
+
 def collate_fn(batch):
     # remove audio from the batch
     batch = [d[0] for d in batch]
     return default_collate(batch)
+
 
 def main(args):
     print(args)
@@ -79,7 +82,8 @@ def main(args):
     valdir = os.path.join(args.data_path, 'val_256')
 
     st = time.time()
-    cache_path = _get_cache_path(traindir)
+    # cache_path = _get_cache_path(traindir)
+    cache_path = "/data_volume/data/cached_data/kinetics.pt"
 
     transform_train = utils.augs.get_train_transforms(args)
 
@@ -97,7 +101,7 @@ def main(args):
                 # cached=cached,
                 _precomputed_metadata=cached
             )
-        elif os.path.isdir(args.data_path): # HACK assume image dataset if data path is a directory
+        elif os.path.isdir(args.data_path):  # HACK assume image dataset if data path is a directory
             return torchvision.datasets.ImageFolder(
                 root=args.data_path,
                 transform=_transform)
@@ -115,8 +119,8 @@ def main(args):
         print("Loading dataset_train from {}".format(cache_path))
         dataset, _ = torch.load(cache_path)
         cached = dict(video_paths=dataset.video_clips.video_paths,
-                video_fps=dataset.video_clips.video_fps,
-                video_pts=dataset.video_clips.video_pts)
+                      video_fps=dataset.video_clips.video_fps,
+                      video_pts=dataset.video_clips.video_pts)
         dataset = make_dataset(is_train=True, cached=cached)
         dataset.transform = transform_train
     else:
@@ -126,34 +130,34 @@ def main(args):
             utils.mkdir(os.path.dirname(cache_path))
             dataset.transform = None
             torch.save((dataset, traindir), cache_path)
-    
+
     if hasattr(dataset, 'video_clips'):
         dataset.video_clips.compute_clips(args.clip_len, 1, frame_rate=args.frame_skip)
-        
+
     print("Took", time.time() - st)
 
     def make_data_sampler(is_train, dataset):
         torch.manual_seed(0)
         if hasattr(dataset, 'video_clips'):
-            _sampler = RandomClipSampler #UniformClipSampler
+            _sampler = RandomClipSampler  # UniformClipSampler
             return _sampler(dataset.video_clips, args.clips_per_video)
         else:
             return torch.utils.data.sampler.RandomSampler(dataset) if is_train else None
-    
+
     print("Creating data loaders")
     train_sampler = make_data_sampler(True, dataset)
 
     data_loader = torch.utils.data.DataLoader(
-        dataset, batch_size=args.batch_size, # shuffle=not args.fast_test,
+        dataset, batch_size=args.batch_size,  # shuffle=not args.fast_test,
         sampler=train_sampler, num_workers=args.workers//2,
         pin_memory=True, collate_fn=collate_fn)
-    
+
     vis = utils.visualize.Visualize(args) if args.visualize else None
 
     print("Creating model")
     model = CRW(args, vis=vis).to(device)
     print(model)
-    
+
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     lr_milestones = [len(data_loader) * m for m in args.lr_milestones]
@@ -164,10 +168,10 @@ def main(args):
     if args.data_parallel:
         model = torch.nn.parallel.DataParallel(model)
         model_without_ddp = model.module
-    
+
     if args.partial_reload:
         checkpoint = torch.load(args.partial_reload, map_location='cpu')
-        utils.partial_load(checkpoint['model'], model_without_ddp)        
+        utils.partial_load(checkpoint['model'], model_without_ddp)
         optimizer.param_groups[0]["lr"] = args.lr
         args.start_epoch = checkpoint['epoch'] + 1
 
@@ -195,6 +199,7 @@ def main(args):
 
     print("Start training")
     start_time = time.time()
+    vis.wandb_init(model)
     for epoch in range(args.start_epoch, args.epochs):
         train_one_epoch(model, optimizer, lr_scheduler, data_loader,
                         device, epoch, args.print_freq,
