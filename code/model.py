@@ -132,7 +132,7 @@ class CRW(nn.Module):
     # Parallelised (GPU) Superpixels
     ############################################################
 
-    def image_to_nodes_old(self, x, sp_mask, max_sp_num):
+    def image_to_nodes(self, x, sp_mask, max_sp_num):
         """ 
         Compute superpixel node representations by spatially average pooling feature maps within 
         superpixels.
@@ -216,53 +216,49 @@ class CRW(nn.Module):
 
         return scaling_mask
 
-    def image_to_nodes(self, x, sp_mask, max_sp_num):
-        """ 
-        Compute superpixel node representations by spatially average pooling feature maps within 
-        superpixels.
+    def patches_to_sp_embeddings(self, x, sp_mask, max_sp_num):
+        """
+        Compute superpixels embeddings by performing a weighted sum
+        of the patches embeddings for each superpixel.
 
-        In summary: video + superpixel mask -> superpixel node embeddings
+        Parameters
+        ----------
+        x : torch Tensor with dimensions (B, C, T, N)
+        sp_mask : torch Tensor with dimensions (B, T, C, H, W)
+            Each (C, H, W) corresponds to a superpixels mask.
+        max_sp_num : int
+            Maximum number of superpixels present in a single frame.
 
-        Inputs:
-            -- 'x' (B x T x c x h x w), video (frame image sequence)
-            -- 'sp_mask' (B x T x c x h x w), dense superpixel maks; integers 0, ..., (max_sp_num-1)
-            -- 'max_sp_num' (int), maximum number of superpixels used (value passed to segmentation algo)
-        Outputs:
-            # -- 'sp_feats' (B x C_reduced x T x N), superpixel node embeddings
-            # -- 'maps'  (B x C x T x H x W), video (frame) feature maps
-
-        Notes
-        -----
-
-        C_reduced above refers to the reduced latent-space dimensionality of the
-        superpixel node representations (sp_feats) after being passed through the
-        projection head (selfsim_fc). 
+        Returns
+        -------
+        sp_feats : torch Tensor with dimensions (B, C, T, SP)
+            Tensor containing 128-dimensional embedding vectors,
+            one for each superpixels in each frame.
         """
 
-        # Number of superpixels present in each mask; (B, T); (8, 4). Useful for downstream checks
-        # n_superpixels = torch.max(sp_mask.flatten(2,3), dim=2)[0]
-
         # Make sp_mask "one-hot" from dense, with a new SP dimension;  B, T, SP, h, w
-        # NOTE Segmentation (e.g. SLIC) returns a 3-channel mask
+        # NOTE Segmentation (e.g. SLIC) returns a 3-channel mask (each channel is identical)
         sp_mask = sp_mask[:, :, 0, :, :]
         idxs_sp = torch.arange(max_sp_num, device=self.args.device)[
             None, :, None, None]
         # NOTE sp_mask broadcasts over SP dimension
         sp_mask = (sp_mask.unsqueeze(2) == idxs_sp).int()
 
-        # Create a weighted superpixel mask to apply to feature maps
-        # if we don't want overlap the 0.5 has to become 1
+        # Create a weighted superpixel mask to apply to patches embeddings
+        # overlap = 1 == no overlapping
+        # overlap = 0 == complete overlapping
         shape = self.args.patch_size
-        window_step = int(self.args.patch_size[0] * 0.5)
+        overlap = 0.5
+        window_step = int(self.args.patch_size[0] * overlap)
         window_shape = (
             *sp_mask.shape[:3], self.args.patch_size[0], self.args.patch_size[1])
 
-        # TODO: we have to take into account overlapping when computing the weights
-        # (probs have to sum to 1)
-        # we can use softmax on probabilities vector or a scaling mask
+        # using a scaling mask allows to divide each superpixel mask
+        # by a factor which increases with overlapping, since we want
+        # the sum of weights of all the patches for each superpixel
+        # to be equal to 1
         scaling_mask = self.compute_scaling_mask(
             sp_mask, window_shape, window_step)
-
         sp_mask = sp_mask / scaling_mask
 
         sp_mask_wndws = view_as_windows(sp_mask, window_shape, step=window_step)[
@@ -283,6 +279,7 @@ class CRW(nn.Module):
         # Compute superpixel node embeddings by multiplying patches embeddings by weighted mask
         sp_feats = (sp_mask_wndws * x_reshaped).mean(3)
 
+        breakpoint()
         return sp_feats
 
     def forward(self, x, sp_mask, max_sp_num, just_feats=False, orig_unnorm=None):
@@ -300,7 +297,7 @@ class CRW(nn.Module):
         _N, C = C // 3, 3
         x = x.transpose(1, 2).view(B, _N, C, T, H, W)
         _q, _mm = self.pixels_to_nodes(x)
-        q = self.image_to_nodes(_q, sp_mask, max_sp_num)
+        q = self.patches_to_sp_embeddings(_q, sp_mask, max_sp_num)
 
         B, C, T, N = q.shape
 
