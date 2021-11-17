@@ -210,8 +210,8 @@ class CRW(nn.Module):
         h_wnd, w_wnd = window_shape[-2:]
         scaling_mask = torch.zeros_like(x)
 
-        for i in range(0, H, window_step):
-            for j in range(0, W, window_step):
+        for i in range(0, H-window_step, window_step):
+            for j in range(0, W-window_step, window_step):
                 scaling_mask[:, :, :, i:i+h_wnd, j:j+w_wnd] += 1
 
         return scaling_mask
