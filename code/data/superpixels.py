@@ -20,7 +20,9 @@ def compute_sp_FH(img):
     return seg
 
 
-def compute_mask(video, sp_method, num_components, p, randomise_superpixels, randomise_superpixels_range, compactness):
+def compute_mask(video, sp_method, num_components, p, 
+                 randomise_superpixels, randomise_superpixels_range, 
+                 compactness):
     sp_tensor_time = []
 
     if sp_method == "random":
@@ -36,10 +38,11 @@ def compute_mask(video, sp_method, num_components, p, randomise_superpixels, ran
             img = video[t, :, :, :]
             img = img.permute(1, 2, 0).cpu().numpy()
             if method == "slic":
-                low, high = num_components - randomise_superpixels_range//2, num_components + \
-                    randomise_superpixels_range//2
-                segments = compute_sp_slic(img, torch.randint(
-                    low=low, high=high, size=(1,)).item(), compactness)
+                low, high = (num_components - randomise_superpixels_range//2, 
+                             num_components + randomise_superpixels_range//2)
+                segments = compute_sp_slic(img, 
+                                           torch.randint(low=low, high=high, size=(1,)).item(), 
+                                           compactness)
             elif method == "fh":
                 segments = compute_sp_FH(img)
             sp_tensor_time.append(torch.from_numpy(segments))

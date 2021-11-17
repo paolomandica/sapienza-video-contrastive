@@ -204,6 +204,11 @@ def train_args():
     parser.add_argument('--compactness', default=200,
                         type=int, help='initial compactness')
 
+    # Dilated Superpixels
+    parser.add_argument('--dilate-superpixels', default=False, action='store_true', help='Dilate superpixels')
+    parser.add_argument('--dilation-kernel-shape', default='L1', type=str, help='L1 | circle | cross')
+    parser.add_argument('--dilation-kernel-size', default=51, type=int, help='Size of kernel used for dilation')
+
     # Variable Superpixels
     parser.add_argument('--randomise-superpixels', default=False, action='store_true',
                         help='Use a random sequence for the number of superpixel components (with SLIC)')
