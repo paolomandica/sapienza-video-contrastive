@@ -13,10 +13,6 @@ import torch
 
 import matplotlib.pyplot as plt
 from matplotlib import cm
-from skimage.segmentation import mark_boundaries
-from plotly.subplots import make_subplots
-import plotly.graph_objects as go
-import plotly.express as px
 
 
 def pca_feats(ff, K=1, solver='auto', whiten=True, img_normalize=True):
@@ -72,8 +68,7 @@ def draw_matches(x1, x2, i1, i2):
         # matches = bf.match(x1.permute(0,2,1).view(-1, 128).cpu().detach().numpy(), x2.permute(0,2,1).view(-1, 128).cpu().detach().numpy())
 
         h = int(x1.shape[-1]**0.5)
-        matches = bf.match(x1.t().cpu().detach().numpy(),
-                           x2.t().cpu().detach().numpy())
+        matches = bf.match(x1.t().cpu().detach().numpy(), x2.t().cpu().detach().numpy())
 
         scale = i1.shape[-2] / h
         grid = torch.stack([torch.arange(0, h)[None].repeat(
@@ -82,14 +77,13 @@ def draw_matches(x1, x2, i1, i2):
         grid = grid.view(2, -1)
         grid = grid * scale + scale//2
 
-        kps = [cv2.KeyPoint(grid[0][i], grid[1][i], 1)
-               for i in range(grid.shape[-1])]
+        kps = [cv2.KeyPoint(grid[0][i], grid[1][i], 1) for i in range(grid.shape[-1])]
 
         matches = sorted(matches, key=lambda x: x.distance)
 
         # img1 = img2 = np.zeros((40, 40, 3))
-        out = cv2.drawMatches(i1.astype(np.uint8), kps, i2.astype(
-            np.uint8), kps, matches[:], None, flags=2).transpose(2, 0, 1)
+        out = cv2.drawMatches(i1.astype(np.uint8), kps, i2.astype(np.uint8),
+                              kps, matches[:], None, flags=2).transpose(2, 0, 1)
 
     return out
 
@@ -110,10 +104,9 @@ class Visualize(object):
     def wandb_init(self, model):
         if not self._init:
             self._init = True
-            wandb.init(project="superpixels-no-norm",
-                       entity="sapienzavideocontrastive",
-                       group="release",
-                       config=self.args)
+            wandb.init(entity="sapienzavideocontrastive",
+                       project="video-contrastive",
+                       group="videowalk", config=self.args)
             wandb.watch(model)
 
     def log(self, key_vals):
@@ -144,13 +137,11 @@ def nn_patches(vis, P, A_k, prefix='', N=10, K=20):
     A = np.sort(A_k, axis=-1)
     I = np.argsort(-A_k, axis=-1)
 
-    vis.text('', opts=dict(width=10000, height=1),
-             win='%s_patch_header' % (prefix))
+    vis.text('', opts=dict(width=10000, height=1), win='%s_patch_header' % (prefix))
 
     for n, i in enumerate(np.random.permutation(P.shape[0])[:N]):
         p = P[i]
-        vis.text('', opts=dict(width=10000, height=1),
-                 win='%s_patch_header_%s' % (prefix, n))
+        vis.text('', opts=dict(width=10000, height=1), win='%s_patch_header_%s' % (prefix, n))
         # vis.image(p,  win='%s_patch_query_%s' % (prefix, n))
 
         for k in range(I.shape[0]):
@@ -195,11 +186,9 @@ def vis_flow_plt(u, v, x1, x2, A):
     fig, ax = plt.subplots()
     im = ax.imshow((I.transpose(1, 2, 0)),)
 
-    C = cm.jet(torch.nn.functional.softmax(
-        (A * A.log()).sum(-1).cpu(), dim=-1))
-    # , scale=1, scale_units='dots')
-    ax.quiver(my[skip], mx[skip], flows[..., 0]
-              [skip], flows[..., 1][skip]*-1, C)
+    C = cm.jet(torch.nn.functional.softmax((A * A.log()).sum(-1).cpu(), dim=-1))
+    ax.quiver(my[skip], mx[skip], flows[..., 0][skip], flows[..., 1]
+              [skip]*-1, C)  # , scale=1, scale_units='dots')
     # ax.quiver(mx[skip], my[skip], flows[...,0][skip], flows[...,1][skip])
 
     return plt
@@ -244,8 +233,7 @@ def frame_pair(x, ff, mm, t1, t2, A, AA, xent_loss, viz):
         # # PCA VIZ
         pca_ff = pca_feats(torch.stack([ff1, ff2]).detach().cpu())
         pca_ff = make_gif(pca_ff, outname=None)
-        viz.images(pca_ff.transpose(0, -1, 1, 2),
-                   win='pcafeats', opts=dict(title=f"{t1} {t2}"))
+        viz.images(pca_ff.transpose(0, -1, 1, 2), win='pcafeats', opts=dict(title=f"{t1} {t2}"))
 
     else:  # Patches as input
         # X here is B x N x C x T x H x W
@@ -275,71 +263,11 @@ def frame_pair(x, ff, mm, t1, t2, A, AA, xent_loss, viz):
     xx = normalize(xent_loss[:H*W])
     img_grid = [cv2.resize(aa, (50, 50), interpolation=cv2.INTER_NEAREST)[None]
                 for aa in AA[0, :, :, :, None].cpu().detach().numpy()]
-    img_grid = [img_grid[_].repeat(
-        3, 0) * np.array(color(xx[_].item()))[:3, None, None] for _ in range(H*W)]
+    img_grid = [img_grid[_].repeat(3, 0) * np.array(color(xx[_].item()))
+                [:3, None, None] for _ in range(H*W)]
     img_grid = [img_grid[_] / img_grid[_].max() for _ in range(H*W)]
     img_grid = torch.from_numpy(np.array(img_grid))
-    img_grid = torchvision.utils.make_grid(
-        img_grid, nrow=H, padding=1, pad_value=1)
+    img_grid = torchvision.utils.make_grid(img_grid, nrow=H, padding=1, pad_value=1)
 
     # img_grid = cv2.resize(img_grid.permute(1, 2, 0).cpu().detach().numpy(), (1000, 1000), interpolation=cv2.INTER_NEAREST).transpose(2, 0, 1)
     viz.images(img_grid, win='lossvis')
-
-
-def vis_plotly(plots, T, viz, win=None):
-    fig = make_subplots(rows=1, cols=T)
-    for i, plot in enumerate(plots):
-        fig.add_trace(plot, 1, i+1)
-    viz.plotlyplot(fig, win=win)
-
-
-def vis_adj(video, sp_mask, As, viz, orig_unnorm):
-    T, C, H, W = video.shape
-
-    fig, ax = plt.subplots(2, T, figsize=(20, 10))
-
-    frames = []
-    adjs = []
-
-    for t in range(T):
-
-        img = orig_unnorm[t]
-        img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
-        # img = video[t]
-        seg = sp_mask[t, 0]
-
-        X = []
-        Y = []
-
-        for sp in np.unique(seg):
-            thresh = (seg == sp)*255
-            # find contours in the binary image
-            contours, hierarchy = cv2.findContours(thresh.astype(
-                "uint8"), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-
-            for c in contours:
-                # calculate moments for each contour
-                M = cv2.moments(c)
-                x = int(M["m10"] / M["m00"])
-                y = int(M["m01"] / M["m00"])
-
-                X.append(x)
-                Y.append(y)
-                ax[1,t].text(x, y, str(sp), fontsize=14, color="pink")
-
-        # display the image
-        img_bound = mark_boundaries(np.transpose(img, (1, 2, 0)), seg,
-                                    color=(239, 255, 0), mode="thick")
-        img_bound = torch.Tensor(img_bound)  # .permute(2, 0, 1)
-        #frames.append(img_bound.permute(2, 0, 1))
-        ax[0,t].imshow(img_bound)
-
-        ax[1,t].imshow(seg, aspect='auto')
-        ax[1,t].scatter(X, Y, color='red')
-        if t > 0:
-            adjs.append(go.Heatmap(z=As[t-1], showscale=False))
-
-    breakpoint()
-    #viz.images(torch.stack(frames), nrow=T, win='frames')
-    viz.matplot(fig, win="scatter")
-    vis_plotly(adjs, T, viz, win="adjs")

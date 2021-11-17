@@ -6,13 +6,6 @@ from torchvision.datasets.folder import make_dataset
 from torchvision.datasets.vision import VisionDataset
 
 import numpy as np
-import torch
-import pdb
-import os
-import random
-
-from .superpixels import *
-
 
 class Kinetics400(VisionDataset):
     """
@@ -46,35 +39,17 @@ class Kinetics400(VisionDataset):
         label (int): class of the video clip
     """
 
-    def __init__(
-        self,
-        root,
-        frames_per_clip,
-        step_between_clips=1,
-        frame_rate=None,
-        extensions=("mp4",),
-        transform=None,
-        cached=None,
-        _precomputed_metadata=None,
-        sp_method=None,
-        num_components=None,
-        prob=None,
-        randomise_superpixels=None, 
-        randomise_superpixels_range=None
-    ):
+    def __init__(self, root, frames_per_clip, step_between_clips=1, frame_rate=None,
+                 extensions=('mp4',), transform=None, cached=None, _precomputed_metadata=None):
         super(Kinetics400, self).__init__(root)
         extensions = extensions
 
         classes = list(sorted(list_dir(root)))
         class_to_idx = {classes[i]: i for i in range(len(classes))}
-
-        self.samples = make_dataset(
-            self.root, class_to_idx, extensions, is_valid_file=None
-        )
+        
+        self.samples = make_dataset(self.root, class_to_idx, extensions, is_valid_file=None)
         self.classes = classes
         video_list = [x[0] for x in self.samples]
-        self.video_list = video_list
-
         self.video_clips = VideoClips(
             video_list,
             frames_per_clip,
@@ -82,22 +57,10 @@ class Kinetics400(VisionDataset):
             frame_rate,
             _precomputed_metadata,
         )
-
         self.transform = transform
-        self.sp_method = sp_method
-        self.num_components = num_components
-        self.prob = prob
-        self.randomise_superpixels = randomise_superpixels
-        self.randomise_superpixels_range = randomise_superpixels_range
 
     def __len__(self):
         return self.video_clips.num_clips()
-
-    def set_compactness(self, compactness):
-        self.compactness = compactness
-
-    def get_compactness(self):
-        return self.compactness
 
     def __getitem__(self, idx):
         success = False
@@ -105,28 +68,12 @@ class Kinetics400(VisionDataset):
             try:
                 video, audio, info, video_idx = self.video_clips.get_clip(idx)
                 success = True
-            except Exception as e:
-                print("skipped idx", idx)
-                print("Error: ", e)
+            except:
+                print('skipped idx', idx)
                 idx = np.random.randint(self.__len__())
 
         label = self.samples[video_idx][1]
-
         if self.transform is not None:
             video = self.transform(video)
 
-        # compute mask
-        if self.sp_method != 'none':
-            video_mask = compute_mask(torch.Tensor(video[2]), 
-                                      self.sp_method, 
-                                      self.num_components, 
-                                      self.prob, 
-                                      self.randomise_superpixels, 
-                                      self.randomise_superpixels_range,
-                                      self.compactness)
-        else:
-            video_mask = torch.empty(0)
-
-        video = video[0], video[1], video[2]
-
-        return video, video_mask, audio, label
+        return video, audio, label
