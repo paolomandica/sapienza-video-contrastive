@@ -584,6 +584,30 @@ def view_as_windows(arr_in, window_shape, step=1):
     return arr_out
 
 #########################################################
+# Superpixel Mask Dilation: 2D Kernel creation functions
+#########################################################
+
+def make_dilation_kernel(args):
+    kernel_size, kernel_shape = args.dilation_kernel_size, args.dilation_kernel_shape
+    assert kernel_size % 2 != 0, "Use an odd kernel size"
+    kernel = torch.zeros(kernel_size, kernel_size, device=args.device, dtype=torch.float16)
+    center = kernel_size // 2
+    if kernel_shape == 'L1':
+        for i in range(kernel_size):
+            for j in range(kernel_size):
+                if (abs(center-i) + abs(center-j)) <= center:
+                    kernel[i, j] = 1
+    elif kernel_shape == 'cross':
+        kernel[:, center] = 1
+        kernel[center, :] = 1
+    elif kernel_shape == 'circle':
+        for i in range(kernel_size):
+            for j in range(kernel_size):
+                if ((center-i)**2 + (center-j)**2) <= center**2:
+                    kernel[i, j] = 1
+    return kernel
+
+#########################################################
 # Misc
 #########################################################
 

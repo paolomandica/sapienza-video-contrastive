@@ -11,7 +11,6 @@ from utils import ZeroSoftmax, view_as_windows
 
 EPS = 1e-20
 
-
 class CRW(nn.Module):
     def __init__(self, args, vis=None):
         super(CRW, self).__init__()
@@ -19,8 +18,7 @@ class CRW(nn.Module):
 
         self.edgedrop_rate = getattr(args, "dropout", 0)
         self.featdrop_rate = getattr(args, "featdrop", 0)
-        self.temperature = getattr(
-            args, "temp", getattr(args, "temperature", 0.07))
+        self.temperature = getattr(args, "temp", getattr(args, "temperature", 0.07))
 
         self.encoder = utils.make_encoder(args).to(self.args.device)
         self.infer_dims()
@@ -37,10 +35,11 @@ class CRW(nn.Module):
         self.sk_targets = getattr(args, "sk_targets", False)
         self.vis = vis
 
+        self.dilation_kernel = utils.make_dilation_kernel(args) if args.dilate_superpixels else None
+
     def infer_dims(self):
         in_sz = 256
-        dummy = torch.zeros(1, 3, 1, in_sz, in_sz).to(
-            next(self.encoder.parameters()).device)
+        dummy = torch.zeros(1, 3, 1, in_sz, in_sz).to(next(self.encoder.parameters()).device)
         dummy_out = self.encoder(dummy)
         self.enc_hid_dim = dummy_out.shape[1]
         self.map_scale = in_sz // dummy_out.shape[-1]
@@ -57,12 +56,8 @@ class CRW(nn.Module):
         return nn.Sequential(*head)
 
     def zeroout_diag(self, A, zero=0):
-        mask = (
-            (torch.eye(
-                A.shape[-1]).unsqueeze(0).repeat(A.shape[0], 1, 1).bool() < 1)
-            .float()
-            .cuda()
-        )
+        mask = (torch.eye(A.shape[-1]).unsqueeze(0).repeat(A.shape[0], 1, 1).bool() < 1)
+        mask = mask.float().cuda()
         return A * mask
 
     def affinity(self, x1, x2):
@@ -301,23 +296,27 @@ class CRW(nn.Module):
         # Make sp_mask "one-hot" from dense, with a new SP dimension;  B, T, SP, h, w
         # NOTE Segmentation (e.g. SLIC) returns a 3-channel mask
         sp_mask = sp_mask[:, :, 0, :, :]
-        idxs_sp = torch.arange(max_sp_num, device=self.args.device)[
-            None, :, None, None]
+        idxs_sp = torch.arange(max_sp_num, device=self.args.device)[None, :, None, None]
         # NOTE sp_mask broadcasts over SP dimension
         sp_mask = (sp_mask.unsqueeze(2) == idxs_sp).int()
+
+        if self.dilation_kernel is not None:
+            B, T, SP, h, w = sp_mask.shape
+            padding = self.args.dilation_kernel_size // 2
+            sp_mask = sp_mask.flatten(1, 2).to(torch.float16)
+            kernel = self.dilation_kernel.repeat(T*SP, 1, 1).unsqueeze(1) # out_chan, in_chan/groups 
+            sp_mask = (F.conv2d(sp_mask, weight = kernel, padding=padding, groups=T*SP) > 0).int()
+            sp_mask = sp_mask.view(B, T, SP, h, w)
 
         # Create a weighted superpixel mask to apply to feature maps
         # NOTE window_shape is (B, T, SP, h//H, w//W)
         window_shape, window_step = (*sp_mask.shape[:3], h//H, w//W), h // H
-        sp_mask_wndws = view_as_windows(sp_mask, window_shape, step=window_step)[
-            0, 0, 0]  # drop singleton dims
+        sp_mask_wndws = view_as_windows(sp_mask, window_shape, step=window_step)[0, 0, 0]  # drop singleton dims
         # sum over windows h//H and w//W
         sp_mask_wndws = sp_mask_wndws.sum(-1).sum(-1)
         # (H, W, B, T, SP) -> (B, T, H, W, SP)
         sp_mask_wndws = sp_mask_wndws.permute(2, 3, 0, 1, 4)
-        sp_mask_wndws = sp_mask_wndws / \
-            (sp_mask.sum(-1).sum(-1) +
-             EPS)[:, :, None, None, :]  # normalise mask by SP sizes
+        sp_mask_wndws = sp_mask_wndws / (sp_mask.sum(-1).sum(-1) + EPS)[:, :, None, None, :]  # normalise mask by SP sizes
         sp_mask_wndws = sp_mask_wndws.unsqueeze(4)
 
         # Compute superpixel node embeddings by multiplying feature maps by weighted mask

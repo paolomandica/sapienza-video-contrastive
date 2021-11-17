@@ -12,19 +12,14 @@ cache_path_sample="/data_volume/data/cached_data/kinetics_sample.pt"
 # Core {Superpixels | Patches | Mix} Model Training
 ####################################################################################################
 
-python -W ignore train.py --data-path $path_to_kinetics \
---cache-dataset --cache-path $cache_path \
+python -W ignore train.py --data-path $path_to_kinetics_sample \
+--cache-dataset --cache-path $cache_path_sample \
 --frame-aug grid --dropout 0.1 --clip-len 4 --temp 0.05 \
---model-type "scratch" --workers 20 --batch-size 48 --lr 0.0003 \
---epochs 20 \
---sp-method slic --num-sp 16 --prob 0 \
---compactness 120 --data-parallel --output-dir "./checkpoints/sp_unnorm_scratch_16/" \
---visualize
-# --visualize --port 8094 \
-# --partial-reload "../pretrained.pth" 
-# --randomise-superpixels --data-parallel --port 8095
-# --output-dir "./checkpoints/randomise_sp_unnorm/"
-# --resume "./checkpoints/randomise_sp_unnorm/checkpoint.pth"
+--model-type "scratch" --workers 20 --batch-size 6 --lr 0.0003 \
+--epochs 20 --data-parallel \
+--sp-method slic --num-sp 36 --prob 0 \
+--compactness 50 \
+--dilate-superpixels --dilation-kernel-size 55 # NB --dilation-kernel-shape is 'L1' by default
 
 ####################################################################################################
 # Teacher-Student Training
