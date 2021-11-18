@@ -65,6 +65,19 @@ export PATH="/any/arbitrary/path/to/binaries/or/else/here:$PATH"
 
 Check the PATH environment variable (a colon-separated string) has been correctly updated with `echo $PATH$`. It should have the new path prepended (with a trailing colon). 
 
+### Everything I Do After Creating a New Container
+
+Run the following when attaching to a new container to clone this repo, `cd` into it, install required packages, add necessary directories to the PATH (e.g. for invoking W&B from the command line for login), reminding you which branch you are on (`main`) and then bringing up a prompt to get you to log into W&B. 
+
+```sh
+git clone https://github.com/paolomandica/sapienza-video-contrastive.git && \
+cd sapienza-video-contrastive && \
+pip install -r requirements.txt && \
+export PATH="$HOME/.local/bin:$PATH" && \
+git branch && \
+wandb login
+```
+
 ### Transferring Files via Secure Copy
 
 Files can be transferred to paths on servers via the SSH protocol using `scp` (secure copy). An example command is shown below, specifying a local source and server path destination. 
