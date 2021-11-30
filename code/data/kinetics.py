@@ -112,21 +112,12 @@ class Kinetics400(VisionDataset):
 
         label = self.samples[video_idx][1]
 
+        T = video.shape[0]
+
         if self.transform is not None:
-            video = self.transform(video)
+            clip_1 = self.transform(video[:T//2, :, :, :])
+            clip_2 = self.transform(video[T//2:, :, :, :])
 
-        # compute mask
-        if self.sp_method != 'none':
-            video_mask = compute_mask(torch.Tensor(video[2]), 
-                                      self.sp_method, 
-                                      self.num_components, 
-                                      self.prob, 
-                                      self.randomise_superpixels, 
-                                      self.randomise_superpixels_range,
-                                      self.compactness)
-        else:
-            video_mask = torch.empty(0)
+        video = torch.cat((torch.Tensor(clip_1), torch.Tensor(clip_2)), 0)
 
-        video = video[0], video[1], video[2]
-
-        return video, video_mask, audio, label
+        return video, audio, label

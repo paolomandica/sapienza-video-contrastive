@@ -32,106 +32,23 @@ class MapTransform(object):
             return np.stack([self.transforms(v) for v in vid])
 
 
-def n_patches(x, n, transform, shape=(64, 64, 3), scale=[0.2, 0.8]):
-    """unused"""
-    if shape[-1] == 0:
-        shape = np.random.uniform(64, 128)
-        shape = (shape, shape, 3)
-
-    crop = transforms.Compose(
-        [
-            lambda x: Image.fromarray(x) if not "PIL" in str(type(x)) else x,
-            transforms.RandomResizedCrop(shape[0], scale=scale),
-        ]
-    )
-
-    if torch.is_tensor(x):
-        x = x.numpy().transpose(1, 2, 0)
-
-    P = []
-    for _ in range(n):
-        xx = transform(crop(x))
-        P.append(xx)
-
-    return torch.cat(P, dim=0)
 
 
-def patch_grid(transform, shape=(64, 64, 3), stride=[0.5, 0.5]):
-    stride = np.random.random() * (stride[1] - stride[0]) + stride[0]
-    stride = [int(shape[0] * stride), int(shape[1] * stride), shape[2]]
+def get_frame_transform(img_size):
 
-    spatial_jitter = transforms.Compose(
-        [
-            lambda x: Image.fromarray(x),
-            transforms.RandomResizedCrop(shape[0], scale=(0.7, 0.9)),
-        ]
-    )
+    tt = [
+        torchvision.transforms.RandomResizedCrop(img_size, scale=(0.8, 0.95), ratio=(0.7, 1.3), interpolation=2),
+        torchvision.transforms.RandomHorizontalFlip(),
+    ]
 
-    def aug(x):
-        if torch.is_tensor(x):
-            x = x.numpy().transpose(1, 2, 0)
-        elif "PIL" in str(type(x)):
-            x = np.array(x)  # .transpose(2, 0, 1)
+    if np.random.rand() <= 0.8:
+        tt += [transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)]
 
-        winds = skimage.util.view_as_windows(x, shape, step=stride)
-        winds = winds.reshape(-1, *winds.shape[-3:])
+    tt += [transforms.RandomGrayscale(p=0.2)]
 
-        P = [transform(spatial_jitter(w)) for w in winds]
-        return torch.cat(P, dim=0)
+    if np.random.rand() <= 0.5:
+        tt += [transforms.GaussianBlur(7)]
 
-    return aug
-
-
-def get_frame_aug(frame_aug, patch_size, p):
-    train_transform = []
-
-    if "cj" in frame_aug:
-        _cj = 0.1
-        train_transform += [
-            # transforms.RandomGrayscale(p=0.2),
-            transforms.ColorJitter(_cj, _cj, _cj, 0),
-        ]
-    if "flip" in frame_aug:
-        train_transform += [transforms.RandomHorizontalFlip()]
-
-    train_transform += NORM
-    train_transform = transforms.Compose(train_transform)
-
-    print("Frame augs:", train_transform, frame_aug)
-
-    if "grid" in frame_aug:
-        aug = patch_grid(train_transform, shape=np.array(patch_size))
-    else:
-        aug = train_transform
-
-    return aug
-
-
-def get_frame_transform(frame_transform_str, img_size):
-    tt = []
-    fts = frame_transform_str
-    norm_size = torchvision.transforms.Resize((img_size, img_size))
-
-    if "crop" in fts:
-        tt.append(
-            torchvision.transforms.RandomResizedCrop(
-                img_size, scale=(0.8, 0.95), ratio=(0.7, 1.3), interpolation=2
-            ),
-        )
-    else:
-        tt.append(norm_size)
-
-    if "cj" in fts:
-        _cj = 0.1
-        # tt += [#transforms.RandomGrayscale(p=0.2),]
-        tt += [
-            transforms.ColorJitter(_cj, _cj, _cj, 0),
-        ]
-
-    if "flip" in fts:
-        tt.append(torchvision.transforms.RandomHorizontalFlip())
-
-    print("Frame transforms:", tt, fts)
 
     return tt
 
@@ -139,32 +56,10 @@ def get_frame_transform(frame_transform_str, img_size):
 def get_train_transforms(args):
     norm_size = torchvision.transforms.Resize((args.img_size, args.img_size))
 
-    frame_transform = get_frame_transform(args.frame_transforms, args.img_size)
-    frame_aug = get_frame_aug(args.frame_aug, args.patch_size, args.prob)
-    frame_aug = [frame_aug] if args.frame_aug != "" else NORM
+    frame_transform = get_frame_transform(args.img_size)
 
-    transform = frame_transform + frame_aug
-    transform_no_grid = frame_transform + NORM
-    transform_no_grid_no_norm = frame_transform + [transforms.ToTensor()]
+    transform = frame_transform + NORM
 
     train_transform = MapTransform(torchvision.transforms.Compose(transform))
-    train_transform_no_grid = MapTransform(torchvision.transforms.Compose(transform_no_grid))
-    train_transform_no_grid_no_norm = MapTransform(torchvision.transforms.Compose(transform_no_grid_no_norm))
 
-    plain = torchvision.transforms.Compose(
-        [
-            torchvision.transforms.ToPILImage(),
-            norm_size,
-            *NORM,
-        ]
-    )
-
-    def with_orig(x):
-        x = (
-            train_transform(x), 
-            train_transform_no_grid(x), 
-            train_transform_no_grid_no_norm(x)
-        )
-        return x
-
-    return with_orig
+    return train_transform

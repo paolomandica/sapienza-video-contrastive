@@ -14,15 +14,15 @@ cache_path_sample="/data_volume/data/cached_data/kinetics_sample.pt"
 
 python -W ignore train.py --data-path $path_to_kinetics \
 --cache-dataset --cache-path $cache_path \
---frame-aug grid --dropout 0.1 --clip-len 4 --temp 0.05 \
---model-type "scratch" --workers 20 --batch-size 48 --lr 0.0003 \
---epochs 20 \
---sp-method slic --num-sp 16 --prob 0 \
---compactness 120 --data-parallel --output-dir "./checkpoints/sp_unnorm_scratch_16/" \
---visualize
+--frame-aug grid --dropout 0.1 --clip-len 8 --temp 0.05 \
+--model-type "scratch" --workers 40 --batch-size 40 --lr 0.05 \
+--epochs 100 --data-parallel --visualize \
+--output-dir "./checkpoints/simsiam/"
+# --sp-method slic --num-sp 49 --prob 0 
+# --visualize --partial-reload "../pretrained.pth" --port 8094 
 # --visualize --port 8094 \
 # --partial-reload "../pretrained.pth" 
-# --randomise-superpixels --data-parallel --port 8095
+# --randomise-superpixels --data-parallel
 # --output-dir "./checkpoints/randomise_sp_unnorm/"
 # --resume "./checkpoints/randomise_sp_unnorm/checkpoint.pth"
 

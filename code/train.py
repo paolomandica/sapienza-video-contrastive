@@ -10,15 +10,18 @@ import torch.utils.data
 from torch.utils.data.dataloader import default_collate
 from torch import nn
 import torchvision
+import torchvision.models as models
 
 import data
 from data.kinetics import Kinetics400
 from data.video import VideoList
 from torchvision.datasets.samplers.clip_sampler import RandomClipSampler, UniformClipSampler
 
+import pdb
+
 import utils
 
-from model import CRW
+from model import SimSiam
 # from modelparallelise import CRW
 
 from teacherstudent import CRWTeacherStudent
@@ -36,6 +39,8 @@ torch.autograd.set_detect_anomaly(True)
 def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
                     epoch, print_freq, vis=None, checkpoint_fn=None, prob=None):
 
+    criterion = nn.CosineSimilarity(dim=1).cuda()
+
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter(
@@ -49,70 +54,31 @@ def train_one_epoch(model, optimizer, lr_scheduler, data_loader, device,
     if vis is not None:
         vis.wandb_init(model)
 
-    for step, ((video, orig, orig_unnorm), sp_mask) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for step, video in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         start_time = time.time()
 
-        grid = np.random.choice([True, False], p=[prob, 1-prob])
+        p1, p2, z1, z2 = model(video.to(device))
+        loss = -(criterion(p1, z2).mean() + criterion(p2, z1).mean()) * 0.5
 
-        if grid:
-            video = video.to(device)
-            output, loss, diagnostics = model(
-                video, None, None, None) if not args.teacher_student else model(video)
-        else:
-            sp_mask = sp_mask.to(device)
-            orig = orig.to(device)
-            max_sp_num = len(torch.unique(sp_mask))
-            output, loss, diagnostics = model(
-                orig, sp_mask, max_sp_num, orig_unnorm=orig_unnorm)
-
-        loss = loss.mean()
-
-        # if vis is not None and np.random.random() < 0.01:
         if vis is not None:
-            vis.log(dict(loss=loss.mean().item()))
-            vis.log({k: v.mean().item() for k, v in diagnostics.items()})
-
-        # NOTE Stochastic checkpointing has been retained
-        if checkpoint_fn is not None and np.random.random() < 0.005:
-            checkpoint_fn()
+            vis.log(dict(loss=loss.item()))
 
         optimizer.zero_grad()
         loss.backward()
-        # print(torch.nn.utils.clip_grad_norm_(model.parameters(), 1), 'grad norm')
         optimizer.step()
 
         metric_logger.update(
             loss=loss.item(), lr=optimizer.param_groups[0]["lr"])
         metric_logger.meters['clips/s'].update(
             video.shape[0] / (time.time() - start_time))
-        lr_scheduler.step()
+        # lr_scheduler.step()
 
-        # CHANGE COMPACTNESS DURING THE EPOCH
-        # if step > len(data_loader)//2 and epoch < 15:
-        #     compactness = data_loader.dataset.get_compactness()
-        #     data_loader.dataset.set_compactness(compactness - 10)
+        if np.random.rand() < 0.005:
+            print("Save checkpoint...")
+            checkpoint_fn()
 
     checkpoint_fn()
 
-    # #### CHANGE COMPACTNESS EACH EPOCH
-    dict_compact = {0:120, 1:90, 2:70, 3:50, 4:35, 5:25}
-
-    if epoch in dict_compact.keys():
-        compactness = dict_compact[epoch]
-    else:
-        compactness = 20
-    
-    data_loader.dataset.set_compactness(compactness)
-
-    # if epoch < 10:
-    #     compactness = data_loader.dataset.get_compactness()
-    #     data_loader.dataset.set_compactness(compactness - 10)
-    # elif epoch < 15 and epoch >= 10:
-    #     compactness = data_loader.dataset.get_compactness()
-    #     data_loader.dataset.set_compactness(compactness - 5)
-    # else:
-    #     compactness = data_loader.dataset.get_compactness()
-    #     data_loader.dataset.set_compactness(compactness - 2)
 
 ####################################################################################################
 # Minor functions
@@ -132,7 +98,7 @@ def _get_cache_path(filepath):
 
 def collate_fn(batch):
     # remove audio and labels from the batch
-    batch = [(d[0], d[1]) for d in batch]
+    batch = [d[0] for d in batch]
     return default_collate(batch)
 
 ####################################################################################################
@@ -252,26 +218,21 @@ def main(args):
     vis = utils.visualize.Visualize(args) if args.visualize else None
 
     # Model
-    print("Creating model", end="\n"+"-"*100+"\n")
-    if not args.teacher_student:
-        model = CRW(args, vis=vis).to(device)
-    else:
-        model = CRWTeacherStudent(args, vis=None).to(
-            device)  # NOTE Disabled vis during prototyping
-    # print(model)
+    model = SimSiam(models.__dict__['resnet50']).to(device)
 
     # Optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.0001)
 
     # Learning rate schedule
     lr_milestones = [len(data_loader) * m for m in args.lr_milestones]
-    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
-        optimizer, milestones=lr_milestones, gamma=args.lr_gamma)
+    lr_scheduler = None
+    #lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=lr_milestones, gamma=args.lr_gamma)
 
     model_without_ddp = model
 
     # Parallelise model over GPUs
     if args.data_parallel:
+        # model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
         model = torch.nn.parallel.DataParallel(model)
         model_without_ddp = model.module
 
@@ -287,15 +248,14 @@ def main(args):
         checkpoint = torch.load(args.resume, map_location='cpu')
         model_without_ddp.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
-        lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
+        # lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
         args.start_epoch = checkpoint['epoch'] + 1
 
     def save_model_checkpoint():
         if args.output_dir:
             checkpoint = {
                 'model': model_without_ddp.state_dict(),
-                'optimizer': optimizer.state_dict(),
-                'lr_scheduler': lr_scheduler.state_dict(),
+                'optimizer': optimizer.state_dict(), # 'lr_scheduler': lr_scheduler.state_dict(),
                 'epoch': epoch,
                 'args': args}
             torch.save(

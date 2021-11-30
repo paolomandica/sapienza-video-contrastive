@@ -110,7 +110,7 @@ class Visualize(object):
     def wandb_init(self, model):
         if not self._init:
             self._init = True
-            wandb.init(project="superpixels-no-norm",
+            wandb.init(project="clip_simsiam",
                        entity="sapienzavideocontrastive",
                        group="release",
                        config=self.args)
