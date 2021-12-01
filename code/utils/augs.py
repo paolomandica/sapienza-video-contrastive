@@ -8,8 +8,8 @@ import numpy as np
 from PIL import Image
 
 IMG_MEAN = (0.4914, 0.4822, 0.4465)
-IMG_STD  = (0.2023, 0.1994, 0.2010)
-NORM = [transforms.ToTensor(), 
+IMG_STD = (0.2023, 0.1994, 0.2010)
+NORM = [transforms.ToTensor(),
         transforms.Normalize(IMG_MEAN, IMG_STD)]
 
 
@@ -21,7 +21,7 @@ class MapTransform(object):
     def __call__(self, vid):
         if isinstance(vid, Image.Image):
             return np.stack([self.transforms(vid)])
-        
+
         if isinstance(vid, torch.Tensor):
             vid = vid.numpy()
 
@@ -30,7 +30,8 @@ class MapTransform(object):
             return x
         else:
             return np.stack([self.transforms(v) for v in vid])
-    
+
+
 def n_patches(x, n, transform, shape=(64, 64, 3), scale=[0.2, 0.8]):
     ''' unused '''
     if shape[-1] == 0:
@@ -40,11 +41,11 @@ def n_patches(x, n, transform, shape=(64, 64, 3), scale=[0.2, 0.8]):
     crop = transforms.Compose([
         lambda x: Image.fromarray(x) if not 'PIL' in str(type(x)) else x,
         transforms.RandomResizedCrop(shape[0], scale=scale)
-    ])    
+    ])
 
     if torch.is_tensor(x):
-        x = x.numpy().transpose(1,2, 0)
-    
+        x = x.numpy().transpose(1, 2, 0)
+
     P = []
     for _ in range(n):
         xx = transform(crop(x))
@@ -56,7 +57,7 @@ def n_patches(x, n, transform, shape=(64, 64, 3), scale=[0.2, 0.8]):
 def patch_grid(transform, shape=(64, 64, 3), stride=[0.5, 0.5]):
     stride = np.random.random() * (stride[1] - stride[0]) + stride[0]
     stride = [int(shape[0]*stride), int(shape[1]*stride), shape[2]]
-    
+
     spatial_jitter = transforms.Compose([
         lambda x: Image.fromarray(x),
         transforms.RandomResizedCrop(shape[0], scale=(0.7, 0.9))
@@ -66,8 +67,8 @@ def patch_grid(transform, shape=(64, 64, 3), stride=[0.5, 0.5]):
         if torch.is_tensor(x):
             x = x.numpy().transpose(1, 2, 0)
         elif 'PIL' in str(type(x)):
-            x = np.array(x)#.transpose(2, 0, 1)
-        
+            x = np.array(x)  # .transpose(2, 0, 1)
+
         winds = skimage.util.view_as_windows(x, shape, step=stride)
         winds = winds.reshape(-1, *winds.shape[-3:])
 
@@ -83,7 +84,7 @@ def get_frame_aug(frame_aug, patch_size):
     if 'cj' in frame_aug:
         _cj = 0.1
         train_transform += [
-            #transforms.RandomGrayscale(p=0.2),
+            # transforms.RandomGrayscale(p=0.2),
             transforms.ColorJitter(_cj, _cj, _cj, 0),
         ]
     if 'flip' in frame_aug:
@@ -116,7 +117,7 @@ def get_frame_transform(frame_transform_str, img_size):
     if 'cj' in fts:
         _cj = 0.1
         # tt += [#transforms.RandomGrayscale(p=0.2),]
-        tt += [transforms.ColorJitter(_cj, _cj, _cj, 0),]
+        tt += [transforms.ColorJitter(_cj, _cj, _cj, 0), ]
 
     if 'flip' in fts:
         tt.append(torchvision.transforms.RandomHorizontalFlip())
@@ -125,22 +126,23 @@ def get_frame_transform(frame_transform_str, img_size):
 
     return tt
 
+
 def get_train_transforms(args):
     norm_size = torchvision.transforms.Resize((args.img_size, args.img_size))
 
     frame_transform = get_frame_transform(args.frame_transforms, args.img_size)
     frame_aug = get_frame_aug(args.frame_aug, args.patch_size)
     frame_aug = [frame_aug] if args.frame_aug != '' else NORM
-    
+
     transform = frame_transform + frame_aug
 
     train_transform = MapTransform(
-            torchvision.transforms.Compose(transform)
-        )
+        torchvision.transforms.Compose(transform)
+    )
 
     plain = torchvision.transforms.Compose([
         torchvision.transforms.ToPILImage(),
-        norm_size, 
+        norm_size,
         *NORM,
     ])
 
@@ -151,4 +153,3 @@ def get_train_transforms(args):
         return x
 
     return with_orig
-
