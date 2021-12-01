@@ -106,7 +106,7 @@ class Visualize(object):
             self._init = True
             wandb.init(entity="sapienzavideocontrastive",
                        project="video-contrastive",
-                       group="videowalk", config=self.args)
+                       group="videowalk-shuffled", config=self.args)
             wandb.watch(model)
 
     def log(self, key_vals):
