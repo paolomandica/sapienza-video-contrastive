@@ -11,9 +11,23 @@ RUN adduser --home /home/$USERNAME --disabled-password --gecos '' --uid $USER_ID
 # Set the working directory and user
 WORKDIR /home/$USERNAME
 
+# Set timezone
+ENV TZ=Europe/Rome
+RUN ln -sf /usr/share/zoneinfo/Europe/Rome /etc/localtime
+
 # Clone the repo
-RUN apt-get update && apt-get install git nano tree screen wget -y
-RUN apt-get install ffmpeg libsm6 libxext6  -y
+RUN apt-get update && \
+    apt-get install -y \
+    build-essential \
+    git \
+    nano \
+    tree \
+    screen \
+    tmux \
+    wget \
+    ffmpeg \
+    libsm6 \
+    libxext6
 
 # Clone and install evaluation repo
 RUN git clone https://github.com/davisvideochallenge/davis2017-evaluation.git
