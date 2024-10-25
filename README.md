@@ -1,5 +1,7 @@
 # Self-Supervised Video Representation Learning via Space-Time Graph Random Walks
 
+This repository contains the implementation of my Master's thesis project in Data Science at Sapienza University of Rome. For a complete description of the methodology and results, please refer to the thesis document: `master-thesis-final.pdf`.
+
 ## Overview
 This project introduces a novel approach to self-supervised representation learning from video using space-time graphs and superpixel segmentation. The method models video as a graph where nodes represent objects in frames, connected by edges that define temporal correspondence between adjacent frames.
 
